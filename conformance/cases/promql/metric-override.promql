@@ -1,0 +1,1 @@
+sum by (host) (increase(http_requests_total{job="metrics"}[1m]))

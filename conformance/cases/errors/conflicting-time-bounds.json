@@ -1,0 +1,19 @@
+{
+  "description": "different values for the same time bound are refused with a position",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "conflicting-time-bounds",
+        "line": 1,
+        "col": 39
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "conflicting-time-bounds",
+        "line": 1,
+        "col": 39
+      }
+    }
+  }
+}

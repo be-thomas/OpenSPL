@@ -1,0 +1,21 @@
+{
+  "description": "topk lowers to topk over an increase window",
+  "targets": {
+    "promql": {
+      "diagnostics": [
+        {
+          "code": "default-span",
+          "severity": "warning",
+          "line": 1,
+          "col": 17
+        },
+        {
+          "code": "promql-window",
+          "severity": "warning",
+          "line": 1,
+          "col": 17
+        }
+      ]
+    }
+  }
+}

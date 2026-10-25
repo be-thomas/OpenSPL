@@ -1,0 +1,19 @@
+{
+  "description": "subsearches are recognized but not implemented",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "unsupported-subsearch",
+        "line": 1,
+        "col": 11
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "unsupported-subsearch",
+        "line": 1,
+        "col": 11
+      }
+    }
+  }
+}

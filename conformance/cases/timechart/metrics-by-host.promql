@@ -1,0 +1,1 @@
+sum by (host) (increase(splunk_events_total{host=~"^web.*$", job="metrics"}[5m]))

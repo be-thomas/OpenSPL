@@ -1,0 +1,2 @@
+FROM web
+| WHERE `@timestamp` >= NOW() - 24 hours AND (status == 500 OR status == 503)

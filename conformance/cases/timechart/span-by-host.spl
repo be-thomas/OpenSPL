@@ -1,0 +1,1 @@
+index=web earliest=-24h | timechart span=5m count by host

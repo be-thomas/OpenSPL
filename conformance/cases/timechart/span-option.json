@@ -1,0 +1,6 @@
+{
+  "description": "the --span option supplies the ES|QL timechart fallback without a warning",
+  "options": {
+    "span": "10m"
+  }
+}

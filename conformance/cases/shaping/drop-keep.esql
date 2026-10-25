@@ -1,0 +1,3 @@
+FROM web
+| DROP message
+| KEEP `host.name`, `log.file.path`

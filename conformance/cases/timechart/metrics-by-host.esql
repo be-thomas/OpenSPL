@@ -1,0 +1,3 @@
+FROM metrics
+| WHERE `host.name` LIKE "web*"
+| STATS count = COUNT(*) BY BUCKET(`@timestamp`, 5 minutes), `host.name`

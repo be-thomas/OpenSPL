@@ -1,0 +1,4 @@
+FROM web
+| EVAL severity = CASE(status >= 500, "error", "ok")
+| SORT bytes DESC
+| LIMIT 2

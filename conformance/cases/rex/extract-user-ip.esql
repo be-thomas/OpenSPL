@@ -1,0 +1,3 @@
+FROM auth
+| GROK message "%{WORD:user} from %{NOTSPACE:ip}"
+| STATS ips = COUNT_DISTINCT(ip) BY user

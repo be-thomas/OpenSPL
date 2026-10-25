@@ -1,0 +1,19 @@
+{
+  "description": "the metric and range window can be overridden per case",
+  "options": {
+    "metric": "http_requests_total",
+    "span": "1m"
+  },
+  "targets": {
+    "promql": {
+      "diagnostics": [
+        {
+          "code": "promql-window",
+          "severity": "warning",
+          "line": 1,
+          "col": 17
+        }
+      ]
+    }
+  }
+}

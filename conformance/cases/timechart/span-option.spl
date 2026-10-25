@@ -1,0 +1,1 @@
+index=web | timechart count by host

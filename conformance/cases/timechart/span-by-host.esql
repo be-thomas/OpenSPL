@@ -1,0 +1,3 @@
+FROM web
+| WHERE `@timestamp` >= NOW() - 24 hours
+| STATS count = COUNT(*) BY BUCKET(`@timestamp`, 5 minutes), `host.name`

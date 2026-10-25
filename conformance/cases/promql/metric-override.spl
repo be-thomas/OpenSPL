@@ -1,0 +1,1 @@
+index=metrics | stats count by host

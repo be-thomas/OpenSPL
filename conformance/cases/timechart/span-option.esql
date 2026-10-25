@@ -1,0 +1,2 @@
+FROM web
+| STATS count = COUNT(*) BY BUCKET(`@timestamp`, 10 minutes), `host.name`

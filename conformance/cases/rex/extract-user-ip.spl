@@ -1,0 +1,1 @@
+index=auth | rex field=_raw "(?<user>\w+) from (?<ip>\S+)" | stats dc(ip) AS ips by user

@@ -1,0 +1,4 @@
+FROM metrics
+| STATS count = COUNT(*) BY `host.name`
+| SORT count DESC
+| LIMIT 3

@@ -1,0 +1,1 @@
+(earliest=-1h status=500) OR (earliest=-2h status=503)

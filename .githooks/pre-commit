@@ -1,0 +1,24 @@
+#!/bin/sh
+# Git pre-commit hook. Install with: make hooks
+#
+# The commit message itself is checked by .githooks/commit-msg. This gate makes
+# sure that gate is installed and runnable, so a commit cannot slip through with
+# the message check missing or disabled.
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+
+fail() {
+	printf 'commit blocked: %s\n' "$1" >&2
+	printf 'run "make hooks" to install the commit-message gate.\n' >&2
+	exit 1
+}
+
+[ "$(git config --get core.hooksPath)" = ".githooks" ] ||
+	fail "core.hooksPath is not .githooks"
+
+[ -x "$root/.githooks/commit-msg" ] ||
+	fail ".githooks/commit-msg is missing or not executable"
+
+[ -x "$root/scripts/check-commit-message.sh" ] ||
+	fail "scripts/check-commit-message.sh is missing or not executable"

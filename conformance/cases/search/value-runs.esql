@@ -1,0 +1,2 @@
+FROM web
+| WHERE `host.name` LIKE "*-*" AND status == "200-299"

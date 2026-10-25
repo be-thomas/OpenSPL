@@ -1,0 +1,1 @@
+index=web earliest=-24h (status=500 OR status=503)

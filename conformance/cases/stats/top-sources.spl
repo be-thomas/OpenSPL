@@ -1,0 +1,1 @@
+index=web | stats count by source | sort limit=10 -count

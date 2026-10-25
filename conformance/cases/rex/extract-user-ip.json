@@ -1,0 +1,22 @@
+{
+  "description": "rex lowers to Grok with a lossy-translation warning; PromQL refuses the stage",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "rex-lossy",
+          "severity": "warning",
+          "line": 1,
+          "col": 14
+        }
+      ]
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 14
+      }
+    }
+  }
+}

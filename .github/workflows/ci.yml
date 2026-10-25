@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Format
+        if: matrix.os == 'ubuntu-latest'
+        run: make fmt-check
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: make build VERSION=0.1.0+${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          ./openspl version
+          ./openspl transpile -t esql 'index=web status>=500 | stats count by host'
+          ./openspl transpile -t promql --metric http_requests_total 'index=metrics | stats count by host'
+
+  commit-message:
+    name: commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            range="origin/$BASE_REF..HEAD"
+          elif [ -n "${BEFORE:-}" ] && \
+               [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && \
+               git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..HEAD"
+          else
+            # workflow_dispatch and other manual runs carry no push range.
+            # Compare against the default branch, and fall back to the tip
+            # commit so the newest message is always checked.
+            git fetch --no-tags origin "$DEFAULT_BRANCH" || true
+            range="origin/$DEFAULT_BRANCH..HEAD"
+            if [ -z "$(git rev-list $range)" ]; then
+              range="-n 1 HEAD"
+            fi
+          fi
+          status=0
+          for sha in $(git rev-list $range); do
+            git log -1 --format=%B "$sha" > "$RUNNER_TEMP/msg.txt"
+            if ! scripts/check-commit-message.sh "$RUNNER_TEMP/msg.txt"; then
+              echo "offending commit: $sha"
+              status=1
+            fi
+          done
+          exit $status
+
+  e2e:
+    name: engines (docker)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start engines
+        run: |
+          # Elasticsearch requires a higher mmap count on GitHub runners.
+          sudo sysctl -w vm.max_map_count=262144
+          docker compose -f conformance/engines/docker-compose.yml up -d
+
+      - name: Run harness
+        run: ./conformance/engines/run.sh
+
+      - name: Engine logs
+        if: failure()
+        run: docker compose -f conformance/engines/docker-compose.yml logs --tail=200
+
+      - name: Stop engines
+        if: always()
+        run: docker compose -f conformance/engines/docker-compose.yml down -v

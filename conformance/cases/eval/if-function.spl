@@ -1,0 +1,1 @@
+index=web | eval severity=if(status>=500,"error","ok") | sort -bytes | head 2

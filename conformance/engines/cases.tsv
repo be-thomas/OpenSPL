@@ -1,0 +1,6 @@
+esql	stats-by-host	-	2	index=logs-e2e | stats count by host
+esql	filtered-count	-	2	index=logs-e2e status>=500 | stats count as errors by host
+esql	timechart-bucket	-	2	index=logs-e2e | timechart span=1m count by host
+esql	eval-sort-head	-	2	index=logs-e2e | eval severity=if(status>=500,"error","ok") | sort -bytes | head 2
+esql	rex-extraction	-	2	index=logs-e2e | rex field=message "GET (?<path>\S+)" | stats count by path
+promql	count-by-job	--metric up	-	index=prometheus | stats count by job

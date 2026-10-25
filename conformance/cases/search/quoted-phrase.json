@@ -1,0 +1,15 @@
+{
+  "description": "a quoted phrase is a full-text search term, not a string literal",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "fulltext-approximation",
+          "severity": "warning",
+          "line": 1,
+          "col": 1
+        }
+      ]
+    }
+  }
+}

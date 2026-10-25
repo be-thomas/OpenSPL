@@ -1,0 +1,6 @@
+{"index":{"_index":"logs-e2e","_id":"1"}}
+{"@timestamp":"2026-01-15T10:00:00Z","host":{"name":"web-01"},"status":200,"bytes":512,"message":"GET / OK","event":{"dataset":"nginx.access"},"log":{"file":{"path":"/var/log/nginx/access.log"}}}
+{"index":{"_index":"logs-e2e","_id":"2"}}
+{"@timestamp":"2026-01-15T10:00:30Z","host":{"name":"web-01"},"status":500,"bytes":128,"message":"GET /checkout FAIL","event":{"dataset":"nginx.access"},"log":{"file":{"path":"/var/log/nginx/access.log"}}}
+{"index":{"_index":"logs-e2e","_id":"3"}}
+{"@timestamp":"2026-01-15T10:01:00Z","host":{"name":"web-02"},"status":503,"bytes":64,"message":"GET /checkout FAIL","event":{"dataset":"nginx.access"},"log":{"file":{"path":"/var/log/nginx/access.log"}}}

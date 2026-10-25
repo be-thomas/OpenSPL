@@ -1,0 +1,14 @@
+.git
+.github
+.gitignore
+.githooks
+.claude
+CLAUDE.md
+RULES.md
+rules.md
+dist
+openspl
+tests
+conformance
+*.md
+LICENSE

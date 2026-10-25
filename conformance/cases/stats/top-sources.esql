@@ -1,0 +1,4 @@
+FROM web
+| STATS count = COUNT(*) BY `log.file.path`
+| SORT count DESC
+| LIMIT 10

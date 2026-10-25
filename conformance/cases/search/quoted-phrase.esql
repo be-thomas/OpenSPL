@@ -1,0 +1,2 @@
+FROM logs-*
+| WHERE MATCH(message, "failed password") AND `host.name` == "web"

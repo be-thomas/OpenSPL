@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="OpenSPL — deterministic Splunk SPL to Elastic ES|QL and PromQL transpiler">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080d1c"/>
+      <stop offset="0.55" stop-color="#0b1226"/>
+      <stop offset="1" stop-color="#101a36"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.5" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#a3e635"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e2b4d" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="60"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="320" fill="url(#bg)"/>
+  <rect width="1200" height="320" fill="url(#grid)" opacity="0.55"/>
+  <circle cx="120" cy="40" r="150" fill="#22d3ee" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="1050" cy="300" r="170" fill="#34d399" opacity="0.10" filter="url(#glow)"/>
+
+  <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
+
+  <text x="72" y="78" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="15" letter-spacing="3.2" fill="#7dd3fc">OPEN SOURCE · DETERMINISTIC · ZERO DEPENDENCIES</text>
+
+  <text x="66" y="170" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="82" font-weight="800" fill="#f8fafc" letter-spacing="-2">OpenSPL</text>
+
+  <text x="72" y="216" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="27" font-weight="600" fill="#cbd5e1">Splunk SPL → Elastic ES|QL + PromQL</text>
+
+  <text x="72" y="262" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="16" fill="#64748b">one IR · two front-ends · two back-ends · no telemetry</text>
+
+  <g>
+    <rect x="672" y="52" width="456" height="216" rx="16" fill="#0a1226" stroke="#24345c"/>
+    <rect x="672" y="52" width="456" height="38" rx="16" fill="#111c38"/>
+    <rect x="672" y="74" width="456" height="16" fill="#111c38"/>
+    <circle cx="696" cy="71" r="5" fill="#f87171"/>
+    <circle cx="714" cy="71" r="5" fill="#fbbf24"/>
+    <circle cx="732" cy="71" r="5" fill="#34d399"/>
+    <text x="760" y="76" font-family="'SF Mono', Menlo, monospace" font-size="12" fill="#5b6b8c">openspl — bash</text>
+
+    <text x="696" y="122" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="14" fill="#64748b">$ openspl transpile \</text>
+    <text x="696" y="144" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="14" fill="#94a3b8">    'index=web status=500 | stats count by host'</text>
+
+    <text x="696" y="184" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="15" fill="#22d3ee">FROM web</text>
+    <text x="696" y="208" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="15" fill="#a3e635">| WHERE status == 500</text>
+    <text x="696" y="232" font-family="'SF Mono', 'JetBrains Mono', Menlo, monospace" font-size="15" fill="#34d399">| STATS COUNT(*) AS count BY `host.name`</text>
+  </g>
+
+  <text x="1128" y="300" text-anchor="end" font-family="'SF Mono', Menlo, monospace" font-size="13" fill="#475569">github.com/be-thomas/openspl</text>
+</svg>

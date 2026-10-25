@@ -1,0 +1,19 @@
+{
+  "description": "an OR cannot combine an index filter with a row filter",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "mixed-index-filter",
+        "line": 1,
+        "col": 11
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-filter",
+        "line": 1,
+        "col": 11
+      }
+    }
+  }
+}

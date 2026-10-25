@@ -1,0 +1,4 @@
+{
+  "description": "a custom mapping renames fields and expands the index pattern",
+  "mapping": "../../fixtures/mappings/custom-ecs.json"
+}

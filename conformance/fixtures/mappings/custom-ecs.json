@@ -1,0 +1,26 @@
+{
+  "default_index": "logs-*",
+  "time_field": "@timestamp",
+  "text_field": "message",
+  "fields": {
+    "status": "http.response.status_code",
+    "bytes": "http.response.body.bytes"
+  },
+  "indexes": {
+    "web": "logs-web-*"
+  },
+  "prometheus": {
+    "metric": "splunk_events_total",
+    "index_label": "job",
+    "function": "increase",
+    "labels": {
+      "host.name": "instance"
+    }
+  },
+  "timechart": {
+    "default_span": "1m"
+  },
+  "bin": {
+    "default_span": "1m"
+  }
+}

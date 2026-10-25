@@ -1,0 +1,3 @@
+FROM web
+| WHERE status >= 500
+| STATS errors = COUNT(*) BY `host.name`

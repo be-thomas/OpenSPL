@@ -1,0 +1,2 @@
+FROM web
+| WHERE `host.name` LIKE "web-*" AND msg LIKE "*error*" AND app LIKE "web*prod"
