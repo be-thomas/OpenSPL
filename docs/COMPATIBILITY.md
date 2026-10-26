@@ -48,7 +48,7 @@ emission, and PromQL `job` matchers behave exactly as for classic SPL.
 | `sort` | ✅ | ✅ | ⚠️ ordering only after an aggregation |
 | `head` | ✅ | ✅ | ⚠️ only with `sort` |
 | `bin` | ✅ | ⚠️ derived column | ⛔ |
-| `rename` | ✅ | ✅ one `RENAME`; ⛔ wildcards | ⛔ |
+| `rename` | ✅ | ✅ one `RENAME`; ⛔ wildcards and interacting pairs | ⛔ |
 
 ## Expressions
 
@@ -181,7 +181,8 @@ They return `unsupported-command` with the command's source position.
 | `rex-no-captures` | error | Pattern has no named capture |
 | `rename-wildcard` | error | `rename` wildcard has no ES\|QL form |
 | `rename-duplicate` | error | One field is renamed twice in a command |
-| `rename-conflict` | error | A target is also a source in the same command |
+| `rename-conflict` | error | Pairs would interact: a target is another source, or two pairs share a target |
+| `rename-source-dropped` | error | A later stage references a name that `rename` moved to a new name |
 | `unsupported-stage` | error | No emitter for the IR node |
 
 ### PromQL emitter

@@ -8,13 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- The `rename` command, translated to one ES\|QL `RENAME` command with every
-  pair applied together. Wildcard patterns (`EU* AS EMEA*`, `properties.* AS *`)
-  parse but are refused with `rename-wildcard`, because ES\|QL `RENAME` has no
-  wildcard form; renaming one field twice (`rename-duplicate`) and a target that
-  is also a source (`rename-conflict`) are refused because their result would
-  depend on application order. A pair whose names are equal is a no-op. PromQL
-  refuses the stage with `promql-unsupported-stage`.
+- The `rename` command, translated to one ES\|QL `RENAME` command carrying
+  every pair. Wildcard patterns (`EU* AS EMEA*`, `properties.* AS *`) parse but
+  are refused with `rename-wildcard`, because ES\|QL `RENAME` has no wildcard
+  form; renaming one field twice (`rename-duplicate`) and pairs that would
+  interact (`rename-conflict`: a target that is another pair's source, or one
+  target shared by two pairs) are refused because ES\|QL applies the pairs in
+  sequence and silently keeps one column on a collision. A pair whose names are
+  equal is a no-op. Later stages resolve a renamed field to its new name, and a
+  reference to a name that was renamed away is refused with
+  `rename-source-dropped`. PromQL refuses the stage with
+  `promql-unsupported-stage`.
 - Parsing for both dialects is generated from ANTLR grammars
   (`pkg/parser/spl1/grammar/SPL1.g4`, `pkg/parser/spl2/grammar/SPL2.g4`). The
   generated Go is committed, so builds and releases need neither Java nor the
@@ -58,6 +62,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Field names that spell an ES\|QL keyword (`where`, `stats`, `rename`) are
+  backtick-quoted wherever they are emitted, so a query that uses one produces
+  a valid command instead of a bare keyword.
 - ES|QL aggregations now use the valid `alias = COUNT(*)` form instead of the
   invalid `COUNT(*) AS alias`.
 - Quoted phrases in a search are lowered to search terms rather than string

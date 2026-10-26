@@ -1,0 +1,19 @@
+{
+  "description": "two pairs cannot rename different fields to one name; Splunk rejects it, and ES|QL would keep only the rightmost column without saying so",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "rename-conflict",
+        "line": 1,
+        "col": 33
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

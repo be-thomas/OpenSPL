@@ -136,6 +136,41 @@ func TestESQLGolden(t *testing.T) {
 			want: "FROM web\n| RENAME dest AS host",
 		},
 		{
+			name: "rename resolves the new name downstream",
+			src:  `index=web | rename dest as host | stats count by host`,
+			want: "FROM web\n| RENAME dest AS host\n| STATS count = COUNT(*) BY host",
+		},
+		{
+			name: "rename chains across two stages",
+			src:  `index=web | rename a as b | rename b as c | table c`,
+			want: "FROM web\n| RENAME a AS b\n| RENAME b AS c\n| KEEP c",
+		},
+		{
+			name: "rename can restore a name it renamed away",
+			src:  `index=web | rename a as b | rename b as a | table a`,
+			want: "FROM web\n| RENAME a AS b\n| RENAME b AS a\n| KEEP a",
+		},
+		{
+			name: "rename skips a no-op pair beside a real one",
+			src:  `index=web | rename a as b, a as a`,
+			want: "FROM web\n| RENAME a AS b",
+		},
+		{
+			name: "rename skips a no-op target beside a real pair",
+			src:  `index=web | rename a as b, b as b`,
+			want: "FROM web\n| RENAME a AS b",
+		},
+		{
+			name: "rename quotes a keyword used as a field",
+			src:  `index=web | rename where as search`,
+			want: "FROM web\n| RENAME `where` AS search",
+		},
+		{
+			name: "keyword fields are quoted in every command",
+			src:  `index=web | table stats, where`,
+			want: "FROM web\n| KEEP `stats`, `where`",
+		},
+		{
 			name: "rename applies every pair in one command",
 			src:  `index=web | rename host as dest, source as src_ip`,
 			want: "FROM web\n| RENAME `host.name` AS dest, `log.file.path` AS src_ip",
@@ -255,6 +290,21 @@ func TestRenameRefusals(t *testing.T) {
 			name: "target is another source",
 			src:  `index=web | rename a as b, b as c`,
 			code: "rename-conflict", line: 1, col: 25,
+		},
+		{
+			name: "two pairs share one target",
+			src:  `index=web | rename a as b, c as b`,
+			code: "rename-conflict", line: 1, col: 33,
+		},
+		{
+			name: "later stage references the renamed-away name",
+			src:  `index=web | rename host as dest | stats count by host`,
+			code: "rename-source-dropped", line: 1, col: 50,
+		},
+		{
+			name: "later filter references the renamed-away name",
+			src:  `index=web | rename a as b | where a=1`,
+			code: "rename-source-dropped", line: 1, col: 35,
 		},
 	}
 	for _, tc := range tests {

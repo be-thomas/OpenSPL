@@ -1,0 +1,19 @@
+{
+  "description": "after a rename the old name no longer exists, so a later stage that references it is refused at the reference instead of emitting a column ES|QL does not have",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "rename-source-dropped",
+        "line": 1,
+        "col": 50
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

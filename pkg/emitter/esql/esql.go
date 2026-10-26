@@ -43,6 +43,7 @@ func Emit(p *ast.Pipeline, opts Options) (*Result, error) {
 		indexOverride: opts.Index,
 		span:          opts.Span,
 		derived:       map[string]bool{},
+		renamed:       map[string]ast.Rename{},
 	}
 	return e.emit(p)
 }
@@ -54,8 +55,9 @@ type emitter struct {
 
 	lines      []string
 	diags      []diag.Diagnostic
-	derived    map[string]bool // columns created by bin/eval, keyed by SPL name
-	fromSource string          // the source actually emitted in FROM
+	derived    map[string]bool       // columns created by bin/eval/rename, keyed by SPL name
+	renamed    map[string]ast.Rename // SPL names renamed away by rename, keyed by source
+	fromSource string                // the source actually emitted in FROM
 }
 
 func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
@@ -367,7 +369,7 @@ func (e *emitter) groupFields(by []ast.Expr) (string, error) {
 			return "", e.errorf(ex.Position(), "invalid-group-by",
 				"group-by accepts field names only")
 		}
-		parts = append(parts, e.fieldName(f.Name))
+		parts = append(parts, e.fieldName(f.Name, f.Pos))
 	}
 	return strings.Join(parts, ", "), nil
 }
@@ -390,7 +392,7 @@ func (e *emitter) emitRex(s *ast.RexStage) error {
 		return e.errorf(s.Pos, "rex-no-captures",
 			"rex pattern must contain at least one named capture such as (?<user>\\S+)")
 	}
-	field := e.fieldName(s.Field)
+	field := e.fieldName(s.Field, s.Pos)
 	e.lines = append(e.lines, "| GROK "+field+" "+quoteString(grok))
 	e.warnf(s.Pos, "rex-lossy",
 		"rex was translated to a Grok pattern; verify the extracted values against the original search")
@@ -441,7 +443,7 @@ func (e *emitter) emitTable(s *ast.TableStage) {
 	}
 	fields := make([]string, 0, len(s.Fields))
 	for _, f := range s.Fields {
-		fields = append(fields, e.fieldName(f))
+		fields = append(fields, e.fieldName(f, s.Pos))
 	}
 	if len(fields) == 0 {
 		return
@@ -453,14 +455,14 @@ func (e *emitter) emitFields(s *ast.FieldsStage) {
 	if len(s.Include) > 0 {
 		fields := make([]string, 0, len(s.Include))
 		for _, f := range s.Include {
-			fields = append(fields, e.fieldName(f))
+			fields = append(fields, e.fieldName(f, s.Pos))
 		}
 		e.lines = append(e.lines, "| KEEP "+strings.Join(fields, ", "))
 	}
 	if len(s.Exclude) > 0 {
 		fields := make([]string, 0, len(s.Exclude))
 		for _, f := range s.Exclude {
-			fields = append(fields, e.fieldName(f))
+			fields = append(fields, e.fieldName(f, s.Pos))
 		}
 		e.lines = append(e.lines, "| DROP "+strings.Join(fields, ", "))
 	}
@@ -474,7 +476,7 @@ func (e *emitter) emitSort(s *ast.SortStage) {
 			if f.Desc {
 				dir = "DESC"
 			}
-			parts = append(parts, e.fieldName(f.Name)+" "+dir)
+			parts = append(parts, e.fieldName(f.Name, s.Pos)+" "+dir)
 		}
 		e.lines = append(e.lines, "| SORT "+strings.Join(parts, ", "))
 	}
@@ -488,7 +490,7 @@ func (e *emitter) emitBin(s *ast.BinStage) error {
 	if err != nil {
 		return e.errorf(s.Pos, "invalid-span", "%v", err)
 	}
-	source := e.fieldName(s.Field)
+	source := e.fieldName(s.Field, s.Pos)
 	e.lines = append(e.lines, "| EVAL "+quoteIdent(s.Field)+" = BUCKET("+source+", "+espan+")")
 	e.derived[s.Field] = true
 	e.info(s.Pos, "bin-bucket",
@@ -497,11 +499,14 @@ func (e *emitter) emitBin(s *ast.BinStage) error {
 }
 
 // emitRename translates `rename from AS to, ...` into one ES|QL RENAME
-// command. ES|QL has no wildcard form and applies all pairs to the same input
-// columns, so a wildcard, a field renamed twice, or a pair whose target is
-// another pair's source is refused instead of silently changing meaning.
+// command. ES|QL has no wildcard form, and it defines a RENAME with several
+// pairs as the equivalent sequence of single renames, so pairs that would
+// interact are refused rather than sequenced here: this translation does not
+// model the order the pairs are applied in, and ES|QL silently replaces a
+// column that already has the target name.
 func (e *emitter) emitRename(s *ast.RenameStage) error {
 	froms := make(map[string]bool, len(s.Renames))
+	tos := make(map[string]bool, len(s.Renames))
 	for _, r := range s.Renames {
 		if strings.Contains(r.From, "*") {
 			return e.errorf(r.FromPos, "rename-wildcard",
@@ -513,6 +518,9 @@ func (e *emitter) emitRename(s *ast.RenameStage) error {
 		}
 	}
 	for _, r := range s.Renames {
+		if r.From == r.To {
+			continue // Splunk treats this as a no-op, so it renames nothing.
+		}
 		if froms[r.From] {
 			return e.errorf(r.FromPos, "rename-duplicate",
 				"field %q is renamed more than once in one command", r.From)
@@ -521,12 +529,17 @@ func (e *emitter) emitRename(s *ast.RenameStage) error {
 	}
 	for _, r := range s.Renames {
 		if r.From == r.To {
-			continue // Splunk treats this as a no-op.
+			continue
 		}
 		if froms[r.To] {
 			return e.errorf(r.ToPos, "rename-conflict",
-				"field %q is also renamed in the same command; overlapping pairs are refused rather than applied in an unspecified order", r.To)
+				"field %q is also renamed in the same command; the pairs would depend on the order they are applied in, which this translation does not model", r.To)
 		}
+		if tos[r.To] {
+			return e.errorf(r.ToPos, "rename-conflict",
+				"field %q is the target of more than one pair; ES|QL would keep only one of them", r.To)
+		}
+		tos[r.To] = true
 	}
 
 	parts := make([]string, 0, len(s.Renames))
@@ -537,16 +550,36 @@ func (e *emitter) emitRename(s *ast.RenameStage) error {
 		// The source is an existing column, so it goes through the mapping. The
 		// target is the name the query chooses, so it is emitted as written;
 		// mapping it would rename to a column the query never asked for.
-		parts = append(parts, e.fieldName(r.From)+" AS "+quoteIdent(r.To))
+		parts = append(parts, e.fieldName(r.From, r.FromPos)+" AS "+quoteIdent(r.To))
 	}
 	if len(parts) == 0 {
 		return nil
 	}
 	e.lines = append(e.lines, "| RENAME "+strings.Join(parts, ", "))
+
+	// The column now exists under its new name, so later stages must reference
+	// it as written, and the old SPL name no longer names any column.
+	for _, r := range s.Renames {
+		if r.From == r.To {
+			continue
+		}
+		e.derived[r.To] = true
+		delete(e.renamed, r.To)
+		e.renamed[r.From] = r
+	}
 	return nil
 }
 
-func (e *emitter) fieldName(name string) string {
+// fieldName resolves an SPL field to the ES|QL column holding it. A field
+// created by an earlier stage keeps its own name; a field renamed away by an
+// earlier rename is refused at the reference, because ES|QL has no way to
+// reference a column the pipeline dropped.
+func (e *emitter) fieldName(name string, pos ast.Pos) string {
+	if r, ok := e.renamed[name]; ok {
+		e.errorf(pos, "rename-source-dropped",
+			"field %q was renamed to %q and is no longer available; reference %q instead", name, r.To, r.To)
+		return quoteIdent(r.To)
+	}
 	if e.derived[name] {
 		return quoteIdent(name)
 	}
@@ -558,7 +591,7 @@ func (e *emitter) fieldName(name string) string {
 func (e *emitter) expr(x ast.Expr, parent int) string {
 	switch v := x.(type) {
 	case *ast.FieldRef:
-		return e.fieldName(v.Name)
+		return e.fieldName(v.Name, v.Pos)
 	case *ast.StringLit:
 		return quoteString(v.Value)
 	case *ast.NumberLit:
@@ -882,8 +915,24 @@ func quoteString(s string) string {
 	return b.String()
 }
 
+// esqlReserved holds the words ES|QL reads as keywords. An identifier that
+// spells one of them must be backtick-quoted: unquoted, ES|QL parses it as the
+// keyword and rejects the query. Quoting a plain name is always valid, so the
+// set errs towards including words that might not strictly need it.
+var esqlReserved = map[string]bool{
+	"and": true, "as": true, "asc": true, "by": true, "case": true,
+	"cast": true, "cross": true, "desc": true, "dissect": true, "else": true,
+	"end": true, "eval": true, "false": true, "fork": true, "from": true,
+	"grok": true, "in": true, "is": true, "join": true, "keep": true,
+	"left": true, "like": true, "limit": true, "lookup": true, "match": true,
+	"mv_expand": true, "not": true, "null": true, "or": true, "order": true,
+	"rename": true, "rlike": true, "row": true, "rows": true, "set": true,
+	"show": true, "sort": true, "stats": true, "throttle": true, "to": true,
+	"true": true, "until": true, "where": true, "with": true, "window": true,
+}
+
 func quoteIdent(s string) string {
-	if isSimpleIdent(s) {
+	if isSimpleIdent(s) && !esqlReserved[strings.ToLower(s)] {
 		return s
 	}
 	return "`" + strings.ReplaceAll(s, "`", "``") + "`"
