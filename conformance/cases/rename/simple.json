@@ -1,0 +1,12 @@
+{
+  "description": "rename becomes one ES|QL RENAME command; PromQL has no row-shaping form for it",
+  "targets": {
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

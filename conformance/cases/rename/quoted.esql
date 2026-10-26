@@ -1,0 +1,2 @@
+FROM web
+| RENAME `user agent` AS ua

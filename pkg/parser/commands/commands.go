@@ -23,6 +23,7 @@ var spl1Implemented = map[string]bool{
 	"sort":      true,
 	"head":      true,
 	"bin":       true,
+	"rename":    true,
 }
 
 // spl1Known are real classic SPL commands that SPL1 does not implement yet.
@@ -51,7 +52,7 @@ var spl1Known = map[string]bool{
 	"mvexpand": true, "nomv": true, "noop": true, "outlier": true,
 	"outputcsv": true, "outputlookup": true, "outputtext": true, "overlap": true,
 	"pivot": true, "predict": true, "rangemap": true, "rare": true,
-	"regex": true, "reltime": true, "rename": true, "replace": true,
+	"regex": true, "reltime": true, "replace": true,
 	"rest": true, "return": true, "reverse": true, "rex": true,
 	"savedsearch": true, "script": true, "scrub": true, "search": true,
 	"searchtxn": true, "select": true, "selfjoin": true, "sendemail": true,

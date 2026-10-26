@@ -49,6 +49,9 @@ type SPL1Visitor interface {
 	// Visit a parse tree produced by SPL1Parser#CmdBin.
 	VisitCmdBin(ctx *CmdBinContext) interface{}
 
+	// Visit a parse tree produced by SPL1Parser#CmdRename.
+	VisitCmdRename(ctx *CmdRenameContext) interface{}
+
 	// Visit a parse tree produced by SPL1Parser#searchExpr.
 	VisitSearchExpr(ctx *SearchExprContext) interface{}
 
@@ -339,6 +342,12 @@ type SPL1Visitor interface {
 
 	// Visit a parse tree produced by SPL1Parser#BinFieldItem.
 	VisitBinFieldItem(ctx *BinFieldItemContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#renamePair.
+	VisitRenamePair(ctx *RenamePairContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#renameField.
+	VisitRenameField(ctx *RenameFieldContext) interface{}
 
 	// Visit a parse tree produced by SPL1Parser#binField.
 	VisitBinField(ctx *BinFieldContext) interface{}

@@ -162,7 +162,7 @@ the shape of the pipeline before producing anything:
 | Exactly one aggregation | `promql-multiple-aggs` |
 | Aggregation is `count` | `promql-unsupported-agg` |
 | Filters appear before the aggregation | `promql-search-after-agg` |
-| No row-shaping stages (`eval`, `rex`, `table`, `fields`, `bin`) | `promql-unsupported-stage` |
+| No row-shaping stages (`eval`, `rex`, `table`, `fields`, `bin`, `rename`) | `promql-unsupported-stage` |
 | Filters map to `=` / `!=` label matchers | `promql-unsupported-filter` |
 | Free text is not used as a filter | `promql-fulltext` |
 | No conflicting matchers for one label | `promql-conflicting-filters` |

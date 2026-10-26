@@ -1,0 +1,2 @@
+FROM web
+| RENAME `host.name` AS dest, `log.file.path` AS src_ip

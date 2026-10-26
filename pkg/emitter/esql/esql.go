@@ -130,6 +130,10 @@ func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
 			if err := e.emitBin(s); err != nil {
 				return e.result(), err
 			}
+		case *ast.RenameStage:
+			if err := e.emitRename(s); err != nil {
+				return e.result(), err
+			}
 		default:
 			return e.result(), e.errorf(st.Position(), "unsupported-stage",
 				"stage %q has no ES|QL emitter", st.StageName())
@@ -489,6 +493,56 @@ func (e *emitter) emitBin(s *ast.BinStage) error {
 	e.derived[s.Field] = true
 	e.info(s.Pos, "bin-bucket",
 		"bin is emitted as a derived column %q; downstream stages reference the bucketed value", s.Field)
+	return nil
+}
+
+// emitRename translates `rename from AS to, ...` into one ES|QL RENAME
+// command. ES|QL has no wildcard form and applies all pairs to the same input
+// columns, so a wildcard, a field renamed twice, or a pair whose target is
+// another pair's source is refused instead of silently changing meaning.
+func (e *emitter) emitRename(s *ast.RenameStage) error {
+	froms := make(map[string]bool, len(s.Renames))
+	for _, r := range s.Renames {
+		if strings.Contains(r.From, "*") {
+			return e.errorf(r.FromPos, "rename-wildcard",
+				"ES|QL RENAME has no wildcard form; %q names several columns", r.From)
+		}
+		if strings.Contains(r.To, "*") {
+			return e.errorf(r.ToPos, "rename-wildcard",
+				"ES|QL RENAME has no wildcard form; %q names several columns", r.To)
+		}
+	}
+	for _, r := range s.Renames {
+		if froms[r.From] {
+			return e.errorf(r.FromPos, "rename-duplicate",
+				"field %q is renamed more than once in one command", r.From)
+		}
+		froms[r.From] = true
+	}
+	for _, r := range s.Renames {
+		if r.From == r.To {
+			continue // Splunk treats this as a no-op.
+		}
+		if froms[r.To] {
+			return e.errorf(r.ToPos, "rename-conflict",
+				"field %q is also renamed in the same command; overlapping pairs are refused rather than applied in an unspecified order", r.To)
+		}
+	}
+
+	parts := make([]string, 0, len(s.Renames))
+	for _, r := range s.Renames {
+		if r.From == r.To {
+			continue
+		}
+		// The source is an existing column, so it goes through the mapping. The
+		// target is the name the query chooses, so it is emitted as written;
+		// mapping it would rename to a column the query never asked for.
+		parts = append(parts, e.fieldName(r.From)+" AS "+quoteIdent(r.To))
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	e.lines = append(e.lines, "| RENAME "+strings.Join(parts, ", "))
 	return nil
 }
 

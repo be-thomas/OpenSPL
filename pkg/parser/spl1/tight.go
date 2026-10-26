@@ -308,7 +308,7 @@ func isCommandKeyword(t int) bool {
 		spl1gen.SPL1ParserEVAL, spl1gen.SPL1ParserREX,
 		spl1gen.SPL1ParserTABLE, spl1gen.SPL1ParserFIELDS,
 		spl1gen.SPL1ParserSORT, spl1gen.SPL1ParserHEAD,
-		spl1gen.SPL1ParserBIN:
+		spl1gen.SPL1ParserBIN, spl1gen.SPL1ParserRENAME:
 		return true
 	}
 	return false

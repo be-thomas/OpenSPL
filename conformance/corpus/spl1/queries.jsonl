@@ -86,7 +86,7 @@
 {"query":"index=main","pages":["search-commands/collect"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"index=main | fields foo | tscollect","pages":["search-commands/tscollect"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
 {"query":"index=main | tags outputfield=test inclname=t allowed_tags=\"error, group\" host","pages":["search-commands/tags"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
-{"query":"index=myIndex1 OR index=myIndex2 | rename myfield1 as myField | stats values(*) AS * BY myField","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
+{"query":"index=myIndex1 OR index=myIndex2 | rename myfield1 as myField | stats values(*) AS * BY myField","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:syntax"}
 {"query":"index=myIndex1 OR index=myIndex2 | stats values(*) AS * BY myField","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:syntax"}
 {"query":"index=myindex | where NOT fieldA=fieldB","pages":["search-commands/search"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"index=myindex | where fieldA!=fieldB","pages":["search-commands/search"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
@@ -110,7 +110,7 @@
 {"query":"source=\"addtotalsData.csv\" | stats sum(sales) BY products","pages":["search-commands/addtotals"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=\"all_month.csv\" | convert timeformat=\"%H:%M:%S\" ctime(_time) AS c_time | table _time, c_time","pages":["search-commands/convert"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
 {"query":"source=\"all_month.csv\"| anomalousvalue action=summary pthresh=0.02 | search isNum=YES","pages":["search-commands/anomalousvalue"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
-{"query":"source=all_month.csv place=\"Northern California\" | rename latitude as lat longitude as lon locationSource as locSource | table time, place, lat, lon, locS*","pages":["search-commands/table"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
+{"query":"source=all_month.csv place=\"Northern California\" | rename latitude as lat longitude as lon locationSource as locSource | table time, place, lat, lon, locS*","pages":["search-commands/table"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=all_month.csv place=*California | table time, place, mag, depth","pages":["search-commands/table"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=all_month.csv place=*California* | stats count, max(mag), min(mag), range(mag), avg(mag) BY magType","pages":["search-commands/stats","statistical-and-charting-functions/aggregate-functions"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=all_month.csv place=*alaska* mag>=3.5 | chart count BY mag place useother=f | rename mag AS Magnitude","pages":["search-commands/chart"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
@@ -139,7 +139,7 @@
 {"query":"source=mytable | DEDUP mycolumn1, mycolumn2 | FIELDS mycolumn1, mycolumn2","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
 {"query":"source=mytable | DELETE","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
 {"query":"source=mytable | FIELDS mycolumn1, mycolumn2","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
-{"query":"source=mytable | RENAME mycolumn as column_alias | FIELDS column_alias","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}
+{"query":"source=mytable | RENAME mycolumn as column_alias | FIELDS column_alias","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=mytable | SORT -mycolumn","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"accepted"}
 {"query":"source=mytable1 [SEARCH source=mytable2 mycolumn2=myvalue | FIELDS mycolumn2]","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-subsearch"}
 {"query":"source=mytable1 mycolumn=5 | DELETE","pages":["quick-reference/splunk-spl-for-sql-users"],"versions":["10.0","9.0","9.1","9.2","9.3","9.4"],"expect":"error:unsupported-command"}

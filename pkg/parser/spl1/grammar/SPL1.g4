@@ -55,9 +55,9 @@ func (p *SPL1Parser) isIdentLike(t int) bool {
 	case SPL1ParserIDENT, SPL1ParserSEARCH, SPL1ParserWHERE, SPL1ParserSTATS,
 		SPL1ParserTIMECHART, SPL1ParserEVAL, SPL1ParserREX, SPL1ParserTABLE,
 		SPL1ParserFIELDS, SPL1ParserSORT, SPL1ParserHEAD, SPL1ParserBIN,
-		SPL1ParserBY, SPL1ParserAS, SPL1ParserSPAN, SPL1ParserLIMIT,
-		SPL1ParserFIELD, SPL1ParserAND, SPL1ParserOR, SPL1ParserNOT,
-		SPL1ParserNOT_WORD:
+		SPL1ParserRENAME, SPL1ParserBY, SPL1ParserAS, SPL1ParserSPAN,
+		SPL1ParserLIMIT, SPL1ParserFIELD, SPL1ParserAND, SPL1ParserOR,
+		SPL1ParserNOT, SPL1ParserNOT_WORD:
 		return true
 	}
 	return false
@@ -282,6 +282,7 @@ command
   | SORT sortBody                           #CmdSort
   | HEAD limitArg?                          #CmdHead
   | BIN binItem*                            #CmdBin
+  | RENAME renamePair (COMMA renamePair | renamePair)*  #CmdRename
   ;
 
 // Every operator rule below is gated on its own token type. Without the gate,
@@ -526,8 +527,8 @@ sign : minus | PLUS ;
 
 identLike
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | BY | AS | SPAN | LIMIT | FIELD | AND | OR | NOT
-  | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | LIMIT | FIELD | AND | OR
+  | NOT | NOT_WORD
   ;
 
 // exprWord is identLike where a bare `not` cannot start an expression: there
@@ -535,7 +536,8 @@ identLike
 // follows an operator as NOT_WORD so it stays available as a field name.
 exprWord
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | BY | AS | SPAN | LIMIT | FIELD | AND | OR | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | LIMIT | FIELD | AND | OR
+  | NOT_WORD
   ;
 
 aggList
@@ -654,6 +656,29 @@ binItem
   | binField {p.binFieldSeen()}              #BinFieldItem
   ;
 
+renamePair
+  : renameField AS renameField
+  ;
+
+// A field name, optionally ending in one tight wildcard (`EU*`). A leading
+// wildcard (`*foo`, `*`) is also a field pattern in Splunk, so it is accepted
+// here and refused by the emitter, which keeps every wildcard refusal on one
+// code. A quoted name may contain spaces; the builder decodes it. A wildcard
+// is only recognised when it touches the name, so `rename a * as b` stays a
+// syntax error.
+//
+// The leading-wildcard alternative starts on STAR_TIGHT because the driver
+// retypes a star that touches a following word, so it has a first token of its
+// own; a bare star is the plain or operator spelling. SLL prediction therefore
+// never has to choose between alternatives that share a first token.
+renameField
+  : identLike ({p.touchingPrev()}? star)?
+  | STAR_TIGHT (identLike | number) ({p.touchingPrev()}? star)?
+  | STAR
+  | STAR_OP
+  | STRING
+  ;
+
 // `span` is always the keyword inside `bin`, so it is not a field name here.
 binField
   : identLikeNotSpan
@@ -662,13 +687,14 @@ binField
 // `span` excluded: `bin span` starts a span assignment, never a field.
 identLikeNotSpan
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | BY | AS | LIMIT | FIELD | AND | OR | NOT
+  | SORT | HEAD | BIN | RENAME | BY | AS | LIMIT | FIELD | AND | OR | NOT
   ;
 
 // `limit` excluded: `sort limit` starts the limit argument, never a field.
 identLikeNotLimit
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | BY | AS | SPAN | FIELD | AND | OR | NOT | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | FIELD | AND | OR | NOT
+  | NOT_WORD
   ;
 
 // --- lexer ---------------------------------------------------------------
@@ -686,6 +712,7 @@ FIELDS    : [fF][iI][eE][lL][dD][sS] ;
 SORT      : [sS][oO][rR][tT] ;
 HEAD      : [hH][eE][aA][dD] ;
 BIN       : [bB][iI][nN] ;
+RENAME    : [rR][eE][nN][aA][mM][eE] ;
 BY        : [bB][yY] ;
 AS        : [aA][sS] ;
 SPAN      : [sS][pP][aA][nN] ;

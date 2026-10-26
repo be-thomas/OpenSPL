@@ -1,0 +1,19 @@
+{
+  "description": "ES|QL RENAME has no wildcard form, so a wildcarded rename is refused at the field rather than guessed",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "rename-wildcard",
+        "line": 1,
+        "col": 20
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

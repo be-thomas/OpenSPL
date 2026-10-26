@@ -1,0 +1,2 @@
+FROM web
+| RENAME `host.name` AS dest
