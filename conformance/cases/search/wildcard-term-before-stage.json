@@ -1,0 +1,15 @@
+{
+  "description": "a wildcard that ends a search term before a pipe stays part of the term",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "fulltext-approximation",
+          "severity": "warning",
+          "line": 1,
+          "col": 11
+        }
+      ]
+    }
+  }
+}

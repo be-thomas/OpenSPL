@@ -632,7 +632,7 @@ func (b *builder) applySearchAddTails(left ast.Expr, tails []spl1gen.ISearchAddT
 
 func (b *builder) applySearchMulTails(left ast.Expr, tails []spl1gen.ISearchMulTailContext) (ast.Expr, error) {
 	for _, tail := range tails {
-		opTok := tail.MulOp().GetStart()
+		opTok := tail.SearchMulOp().GetStart()
 		if tail.SearchUnary() == nil {
 			return nil, b.missingOperand(opTok)
 		}
@@ -683,7 +683,7 @@ func (b *builder) searchPrimary(ctx spl1gen.ISearchPrimaryContext) (ast.Expr, er
 		return &ast.SearchTerm{Value: value, Pos: pos}, nil
 
 	case *spl1gen.SPrimWordContext:
-		word := c.IdentLike().GetStart()
+		word := c.ExprWord().GetStart()
 		if b.comparisonAhead(word) {
 			return &ast.FieldRef{Name: word.GetText(), Pos: b.pos(word)}, nil
 		}
@@ -888,7 +888,7 @@ func (b *builder) valuePrimary(ctx spl1gen.IValuePrimaryContext) (ast.Expr, erro
 		return b.valueExpr(c.ValueExpr())
 
 	case *spl1gen.VPrimCallContext:
-		name := c.IdentLike().GetStart()
+		name := c.ExprWord().GetStart()
 		args := make([]ast.Expr, 0, len(c.AllValueExpr()))
 		for _, arg := range c.AllValueExpr() {
 			expr, err := b.valueExpr(arg)
@@ -900,7 +900,7 @@ func (b *builder) valuePrimary(ctx spl1gen.IValuePrimaryContext) (ast.Expr, erro
 		return &ast.CallExpr{Name: name.GetText(), Args: args, Pos: b.pos(name)}, nil
 
 	case *spl1gen.VPrimWordContext:
-		tok := c.IdentLike().GetStart()
+		tok := c.ExprWord().GetStart()
 		return &ast.FieldRef{Name: tok.GetText(), Pos: b.pos(tok)}, nil
 
 	case *spl1gen.VPrimStringContext:

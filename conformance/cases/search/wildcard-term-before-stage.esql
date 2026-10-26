@@ -1,0 +1,3 @@
+FROM web
+| WHERE MATCH(message, "error")
+| STATS count = COUNT(*) BY `host.name`

@@ -238,11 +238,17 @@ type SPL1Visitor interface {
 	// Visit a parse tree produced by SPL1Parser#mulOp.
 	VisitMulOp(ctx *MulOpContext) interface{}
 
+	// Visit a parse tree produced by SPL1Parser#searchMulOp.
+	VisitSearchMulOp(ctx *SearchMulOpContext) interface{}
+
 	// Visit a parse tree produced by SPL1Parser#sign.
 	VisitSign(ctx *SignContext) interface{}
 
 	// Visit a parse tree produced by SPL1Parser#identLike.
 	VisitIdentLike(ctx *IdentLikeContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#exprWord.
+	VisitExprWord(ctx *ExprWordContext) interface{}
 
 	// Visit a parse tree produced by SPL1Parser#aggList.
 	VisitAggList(ctx *AggListContext) interface{}

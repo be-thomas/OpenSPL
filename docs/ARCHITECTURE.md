@@ -17,7 +17,7 @@ engines. Front-ends lower syntax into one IR; back-ends read only that IR.
 | Explainable failure | Every error and warning carries `line`, `column`, `offset`, a stable code, and a message. |
 | Target independence | Parsers never import emitters. Emitters never parse source syntax. |
 | Additive growth | A new language is a front-end; a new engine is a back-end; neither rewrites the other. |
-| Small supply chain | The binary links one third-party module, the ANTLR Go parser runtime; see [ADR 0004](adr/0004-antlr-parsers.md). |
+| Small supply chain | The binary links two third-party modules: the ANTLR Go parser runtime and the `golang.org/x/exp` package it uses; see [ADR 0004](adr/0004-antlr-parsers.md). |
 | Offline by default | Queries can contain sensitive identifiers; the process never sends them anywhere. |
 
 ## Package map
@@ -28,8 +28,8 @@ engines. Front-ends lower syntax into one IR; back-ends read only that IR.
 | `pkg/diag` | `pkg/ast` | Targets |
 | `pkg/parser/spl1` | `pkg/ast`, `pkg/diag`, `pkg/parser/commands`, `pkg/parser/internal/*`, generated `spl1/gen` | ES\|QL, PromQL, mapping |
 | `pkg/parser/spl2` | `pkg/ast`, `pkg/diag`, `pkg/parser/commands`, `pkg/parser/internal/*`, generated `spl2/gen` | ES\|QL, PromQL, mapping, the SPL1 front-end |
-| `pkg/parser/internal/antlrpos` | stdlib, `pkg/ast` | Parsers, targets |
-| `pkg/parser/internal/antlrsupport` | `pkg/diag`, ANTLR runtime | Targets |
+| `pkg/parser/internal/antlrpos` | stdlib, ANTLR runtime, `pkg/ast` | Parsers, targets |
+| `pkg/parser/internal/antlrsupport` | `pkg/ast`, `pkg/diag`, `pkg/parser/internal/antlrpos`, ANTLR runtime | Targets |
 | `pkg/mapping` | stdlib only | Queries |
 | `pkg/emitter/esql` | `pkg/ast`, `pkg/diag`, `pkg/mapping` | SPL syntax |
 | `pkg/emitter/promql` | `pkg/ast`, `pkg/diag`, `pkg/mapping` | SPL syntax |
@@ -91,7 +91,7 @@ Three small Go layers surround the generated parsers:
 |---|---|
 | `antlrpos.SourceMap` | Converts ANTLR rune indexes to byte-based `ast.Pos`, slices source text for exact spellings, and exposes byte adjacency for wildcard and hyphen runs. |
 | `antlrsupport` | Installs an error listener that records the first syntax error as a positioned `diag.Error`, aborts the parse, and maps grammar actions' aborts back to positions. |
-| Stage driver (`parse.go`, `spl2.go`) | Lexes the whole input first, sequences stages, classifies command names, and lowers each stage immediately so error priority stays fail-fast. |
+| Stage driver (`parse.go`, `spl2.go`) | Lexes the whole input first, sequences stages, classifies command names, and lowers each stage immediately, so a semantic error in an earlier stage still beats a grammar error in a later one. |
 
 The visitor lowering lives in `build.go` in each front-end. It converts rule
 contexts to IR nodes and owns the defaults and refusals the grammar leaves out

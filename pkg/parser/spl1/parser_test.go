@@ -177,6 +177,156 @@ func TestSearchTermWildcardRun(t *testing.T) {
 	}
 }
 
+// TestWildcardTermBeforeStage covers a wildcard that ends a search term right
+// before the pipe. It must stay part of the term, not become a multiplication
+// whose right operand is missing.
+func TestWildcardTermBeforeStage(t *testing.T) {
+	tests := []struct {
+		src   string
+		terms []string
+	}{
+		{`a* | stats count`, []string{"a*"}},
+		{`a** | stats count`, []string{"a**"}},
+		{`a*1 | stats count`, []string{"a*1"}},
+		{`a*b | stats count`, []string{"a*b"}},
+		{`index=web error* | stats count`, []string{"error*"}},
+		{`search a* | stats count`, []string{"a*"}},
+		{`*error* | stats count`, []string{"*error*"}},
+		{`NOT a* | stats count`, []string{"a*"}},
+		{`a* OR b* | stats count`, []string{"a*", "b*"}},
+		{`web*prod | stats count`, []string{"web*prod"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			p := mustParse(t, tc.src)
+			if len(p.Stages) != 2 || p.Stages[1].StageName() != "stats" {
+				t.Fatalf("stages = %v, want search then stats", p.Stages)
+			}
+			expr := p.Stages[0].(*ast.SearchStage).Expr
+			for _, want := range tc.terms {
+				if !exprHasTerm(expr, want) {
+					t.Errorf("expression %#v has no term %q", expr, want)
+				}
+			}
+		})
+	}
+}
+
+// TestAdjacentStarStaysMultiplication checks the other side of the boundary:
+// a star that does not touch the preceding word is still the multiplication
+// operator, as are stars after numbers and durations.
+func TestAdjacentStarStaysMultiplication(t *testing.T) {
+	tests := []string{`a * b | stats count`, `1*2 | stats count`, `5m*2 | stats count`}
+	for _, src := range tests {
+		t.Run(src, func(t *testing.T) {
+			p := mustParse(t, src)
+			b, ok := p.Stages[0].(*ast.SearchStage).Expr.(*ast.BinaryExpr)
+			if !ok || b.Op != "*" {
+				t.Fatalf("expr = %#v, want multiplication", p.Stages[0].(*ast.SearchStage).Expr)
+			}
+		})
+	}
+}
+
+// TestNotAfterOperatorIsAField covers the NOT_WORD retyping: after an
+// arithmetic or comparison operator `not` is a field name, so it does not
+// start the negation operator.
+func TestNotAfterOperatorIsAField(t *testing.T) {
+	t.Run("arithmetic right operand", func(t *testing.T) {
+		p := mustParse(t, `index=web | eval x=1+not`)
+		e := p.Stages[1].(*ast.EvalStage)
+		b, ok := e.Assignments[0].Expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "+" {
+			t.Fatalf("expr = %#v, want addition", e.Assignments[0].Expr)
+		}
+		f, ok := b.Right.(*ast.FieldRef)
+		if !ok || f.Name != "not" {
+			t.Fatalf("right side = %#v, want FieldRef not", b.Right)
+		}
+	})
+
+	t.Run("comparison right operand", func(t *testing.T) {
+		p := mustParse(t, `index=web | where a=not`)
+		if !exprHasField(p.Stages[1].(*ast.SearchStage).Expr, "not") {
+			t.Fatalf("expr lost the not field: %#v", p.Stages[1].(*ast.SearchStage).Expr)
+		}
+	})
+
+	t.Run("group key", func(t *testing.T) {
+		p := mustParse(t, `index=web | stats count by not`)
+		s := p.Stages[1].(*ast.StatsStage)
+		if len(s.By) != 1 {
+			t.Fatalf("by = %#v, want one key", s.By)
+		}
+		if f, ok := s.By[0].(*ast.FieldRef); !ok || f.Name != "not" {
+			t.Fatalf("by[0] = %#v, want FieldRef not", s.By[0])
+		}
+	})
+
+	t.Run("assignment target", func(t *testing.T) {
+		p := mustParse(t, `index=web | eval not=1`)
+		e := p.Stages[1].(*ast.EvalStage)
+		if e.Assignments[0].Name != "not" {
+			t.Fatalf("assignment = %#v, want target not", e.Assignments[0])
+		}
+	})
+}
+
+// TestNotAtExpressionStartIsNegation is the other side of the retyping: at the
+// start of an expression `not` is the negation operator, including after an
+// `eval` assignment's `=`, and a call with several arguments is then rejected
+// at the argument comma instead of becoming a function named `not`.
+func TestNotAtExpressionStartIsNegation(t *testing.T) {
+	tests := []struct {
+		src  string
+		line int
+		col  int
+	}{
+		{`not%x`, 1, 4},
+		{`index=web | eval y=not(x,y)`, 1, 25},
+		{`eval y=not(x,y)`, 1, 13},
+		{`index=web | eval x=not`, 1, 23},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != "syntax" || d.Pos.Line != tc.line || d.Pos.Col != tc.col {
+				t.Fatalf("diagnostic = %#v, want syntax at %d:%d", d, tc.line, tc.col)
+			}
+		})
+	}
+
+	t.Run("a lone assignment value negates", func(t *testing.T) {
+		p := mustParse(t, `eval x=not(2)`)
+		e := p.Stages[0].(*ast.EvalStage)
+		u, ok := e.Assignments[0].Expr.(*ast.UnaryExpr)
+		if !ok || u.Op != "not" {
+			t.Fatalf("expr = %#v, want NOT 2", e.Assignments[0].Expr)
+		}
+	})
+
+	t.Run("leading eval keeps a field after an operator", func(t *testing.T) {
+		p := mustParse(t, `eval x=1+not`)
+		e := p.Stages[0].(*ast.EvalStage)
+		b, ok := e.Assignments[0].Expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "+" {
+			t.Fatalf("expr = %#v, want addition", e.Assignments[0].Expr)
+		}
+		f, ok := b.Right.(*ast.FieldRef)
+		if !ok || f.Name != "not" {
+			t.Fatalf("right side = %#v, want FieldRef not", b.Right)
+		}
+	})
+}
+
 func TestCallRequiresAdjacency(t *testing.T) {
 	t.Run("grouped term after a value is not a call", func(t *testing.T) {
 		p := mustParse(t, `index=web (status=500)`)

@@ -315,11 +315,19 @@ func (v *BaseSPL1Visitor) VisitMulOp(ctx *MulOpContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSPL1Visitor) VisitSearchMulOp(ctx *SearchMulOpContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSPL1Visitor) VisitSign(ctx *SignContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
 func (v *BaseSPL1Visitor) VisitIdentLike(ctx *IdentLikeContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitExprWord(ctx *ExprWordContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 

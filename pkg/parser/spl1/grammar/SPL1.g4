@@ -27,13 +27,17 @@
 
 grammar SPL1;
 
-// Tight token types. The driver retypes the STAR, MINUS, and NUMBER tokens
-// that begin a literal value run on the right of a comparison as STAR_TIGHT,
-// MINUS_TIGHT, and NUMBER_TIGHT (see tight.go). They are not lexer rules: the
-// lexer emits the ordinary token, and the retyping is a token-stream pass,
-// because whether a token starts a value run depends on the token after it,
+// Tight token types. The driver retypes a STAR that touches a preceding word
+// as STAR_TERM, because the wildcard belongs to the search term (`error*`), and
+// the STAR, MINUS, and NUMBER tokens that begin a literal value run on the
+// right of a comparison as STAR_TIGHT, MINUS_TIGHT, and NUMBER_TIGHT (see
+// tight.go). It also retypes NOT after an arithmetic or comparison operator as
+// NOT_WORD, because there the word is a field name (`1+not`), while at the
+// start of an expression it is the negation operator and commits. These are
+// not lexer rules: the lexer emits the ordinary token, and the retyping is a
+// token-stream pass, because the decision depends on the surrounding tokens,
 // past the end of the token the lexer is matching.
-tokens { NUMBER_TIGHT, STAR_TIGHT, MINUS_TIGHT }
+tokens { NUMBER_TIGHT, STAR_TIGHT, MINUS_TIGHT, STAR_TERM, NOT_WORD }
 
 @parser::members {
 // la returns the token type at lookahead k.
@@ -52,7 +56,8 @@ func (p *SPL1Parser) isIdentLike(t int) bool {
 		SPL1ParserTIMECHART, SPL1ParserEVAL, SPL1ParserREX, SPL1ParserTABLE,
 		SPL1ParserFIELDS, SPL1ParserSORT, SPL1ParserHEAD, SPL1ParserBIN,
 		SPL1ParserBY, SPL1ParserAS, SPL1ParserSPAN, SPL1ParserLIMIT,
-		SPL1ParserFIELD, SPL1ParserAND, SPL1ParserOR, SPL1ParserNOT:
+		SPL1ParserFIELD, SPL1ParserAND, SPL1ParserOR, SPL1ParserNOT,
+		SPL1ParserNOT_WORD:
 		return true
 	}
 	return false
@@ -88,16 +93,17 @@ func (p *SPL1Parser) startsTerm() bool {
 		return false
 	case SPL1ParserSTRING, SPL1ParserNUMBER, SPL1ParserNUMBER_TIGHT,
 		SPL1ParserDURATION, SPL1ParserLPAREN, SPL1ParserLBRACKET,
-		SPL1ParserSTAR, SPL1ParserSTAR_TIGHT:
+		SPL1ParserSTAR, SPL1ParserSTAR_TIGHT, SPL1ParserSTAR_TERM:
 		return true
 	}
 	return p.isIdentLike(t)
 }
 
-// isStar, isNumber, and isMinus accept the plain and tight spellings of a
-// token, wherever the value-run distinction does not matter.
+// isStar, isNumber, and isMinus accept every spelling of a token, wherever the
+// term, value-run, and operator distinctions do not matter.
 func (p *SPL1Parser) isStar(t int) bool {
-	return t == SPL1ParserSTAR || t == SPL1ParserSTAR_TIGHT
+	return t == SPL1ParserSTAR || t == SPL1ParserSTAR_TIGHT ||
+		t == SPL1ParserSTAR_TERM
 }
 
 func (p *SPL1Parser) isNumber(t int) bool {
@@ -134,6 +140,14 @@ func (p *SPL1Parser) atAdd() bool {
 func (p *SPL1Parser) atMul() bool {
 	t := p.la(1)
 	return p.isStar(t) || t == SPL1ParserSLASH || t == SPL1ParserPERCENT
+}
+
+// atSearchMul is atMul for term position, where an adjacent STAR is part of
+// the preceding term (`error*`) rather than a multiplication operator.
+func (p *SPL1Parser) atSearchMul() bool {
+	t := p.la(1)
+	return t == SPL1ParserSTAR || t == SPL1ParserSTAR_TIGHT ||
+		t == SPL1ParserSLASH || t == SPL1ParserPERCENT
 }
 
 // parseAbort is the panic value for a grammar action that ends the parse at a
@@ -322,7 +336,7 @@ searchMultiplicative
   ;
 
 searchMulTail
-  : {p.atMul()}? mulOp (searchUnary | absentOperand)
+  : {p.atSearchMul()}? searchMulOp (searchUnary | absentOperand)
   ;
 
 searchUnary
@@ -333,7 +347,7 @@ searchUnary
 searchPrimary
   : LPAREN searchExpr RPAREN                #SPrimParen
   | STRING                                  #SPrimString
-  | identLike searchTermTail*               #SPrimWord
+  | exprWord searchTermTail*                #SPrimWord
   | number                                  #SPrimNumber
   | DURATION                                #SPrimDuration
   | {p.termStarRun()}? star searchTermTail+ #SPrimStarRun
@@ -342,9 +356,12 @@ searchPrimary
   ;
 
 // Free-text runs merge only adjacent wildcards and words: `a-b` stays
-// arithmetic in term position.
+// arithmetic in term position. The driver retypes a STAR that touches the
+// preceding word as STAR_TERM, so `a* | stats` is the term `a*` followed by a
+// stage; without that the star could also begin a multiplication whose operand
+// is missing.
 searchTermTail
-  : {p.touchingPrev()}? star
+  : {p.touchingPrev()}? STAR_TERM
   | {p.touchingPrev()}? identLike
   | {p.touchingPrev()}? number
   ;
@@ -404,8 +421,8 @@ valueUnary
 
 valuePrimary
   : LPAREN valueExpr RPAREN                 #VPrimParen
-  | {p.callAhead()}? identLike LPAREN (valueExpr (COMMA valueExpr)*)? RPAREN #VPrimCall
-  | identLike                               #VPrimWord
+  | {p.callAhead()}? exprWord LPAREN (valueExpr (COMMA valueExpr)*)? RPAREN #VPrimCall
+  | exprWord                                #VPrimWord
   | STRING                                  #VPrimString
   | number                                  #VPrimNumber
   | DURATION                                #VPrimDuration
@@ -434,12 +451,15 @@ comparisonOp : EQ2 | EQ | NE | LT | LE | GT | GE ;
 // driver retypes only the ones that begin a value run. Every rule below them
 // is shared by the value-run and expression reads, and none of them changes
 // meaning with the tightness.
-star  : STAR | STAR_TIGHT ;
+star  : STAR | STAR_TIGHT | STAR_TERM ;
 minus : MINUS | MINUS_TIGHT ;
 number : NUMBER | NUMBER_TIGHT ;
 
 addOp : PLUS | minus ;
 mulOp : star | SLASH | PERCENT ;
+// Term-position multiplication excludes STAR_TERM: there the star already
+// belongs to the preceding term.
+searchMulOp : STAR | STAR_TIGHT | SLASH | PERCENT ;
 sign : minus | PLUS ;
 
 // --- identifiers and command bodies --------------------------------------
@@ -447,6 +467,15 @@ sign : minus | PLUS ;
 identLike
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
   | SORT | HEAD | BIN | BY | AS | SPAN | LIMIT | FIELD | AND | OR | NOT
+  | NOT_WORD
+  ;
+
+// exprWord is identLike where a bare `not` cannot start an expression: there
+// the keyword is the negation operator, and the driver retypes a `not` that
+// follows an operator as NOT_WORD so it stays available as a field name.
+exprWord
+  : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
+  | SORT | HEAD | BIN | BY | AS | SPAN | LIMIT | FIELD | AND | OR | NOT_WORD
   ;
 
 aggList

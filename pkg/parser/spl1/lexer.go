@@ -2,6 +2,7 @@ package spl1
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -157,16 +158,25 @@ func newTokenStream(m *antlrpos.SourceMap, src string) (*tightStream, error) {
 
 // checkTokens reports the first lexically invalid token in source order.
 //
-// ANTLR's lexer never fails: a character no rule accepts becomes UNKNOWN, and
-// a numeric literal immediately followed by a letter lexes as a valid number
-// plus an identifier. Both are lexical errors in SPL, reported at the start of
-// the offending token before any parsing begins.
+// ANTLR's lexer never fails: a character no rule accepts becomes UNKNOWN, a
+// numeric literal immediately followed by a letter lexes as a valid number
+// plus an identifier, and a number too large for a float64 still lexes as
+// NUMBER. All three are lexical errors in SPL, reported at the start of the
+// offending token before any parsing begins.
 func checkTokens(m *antlrpos.SourceMap, toks []antlr.Token, src string) error {
 	for i, t := range toks {
 		switch t.GetTokenType() {
 		case spl1gen.SPL1ParserUNKNOWN:
 			return invalidCharacter(m, t, src)
 		case spl1gen.SPL1ParserNUMBER, spl1gen.SPL1ParserDURATION:
+			// A number outside float64 is invalid, like any other lexical
+			// error, and is reported before parsing begins.
+			if t.GetTokenType() == spl1gen.SPL1ParserNUMBER {
+				if _, err := strconv.ParseFloat(t.GetText(), 64); err != nil {
+					return diag.NewError(m.Pos(t), "syntax",
+						"invalid number %q", t.GetText())
+				}
+			}
 			next := nextToken(toks, i)
 			if next == nil || next.GetTokenType() == antlr.TokenEOF {
 				continue
@@ -179,7 +189,9 @@ func checkTokens(m *antlrpos.SourceMap, toks []antlr.Token, src string) error {
 				continue
 			}
 			start := m.ByteOffset(t.GetStart())
-			end := at + 1
+			// The literal is malformed because a letter-run continues it, so
+			// quote the whole run rather than the numeric token alone.
+			end := m.ByteOffset(next.GetStop() + 1)
 			if end > len(src) {
 				end = len(src)
 			}

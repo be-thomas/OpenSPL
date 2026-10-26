@@ -124,7 +124,7 @@ func isIdentLikeToken(t int) bool {
 		spl1gen.SPL1ParserSORT, spl1gen.SPL1ParserHEAD, spl1gen.SPL1ParserBIN,
 		spl1gen.SPL1ParserBY, spl1gen.SPL1ParserAS, spl1gen.SPL1ParserSPAN,
 		spl1gen.SPL1ParserLIMIT, spl1gen.SPL1ParserFIELD, spl1gen.SPL1ParserAND,
-		spl1gen.SPL1ParserOR, spl1gen.SPL1ParserNOT:
+		spl1gen.SPL1ParserOR, spl1gen.SPL1ParserNOT, spl1gen.SPL1ParserNOT_WORD:
 		return true
 	}
 	return false

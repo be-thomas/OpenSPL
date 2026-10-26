@@ -7,8 +7,10 @@ Nothing is silently rewritten.
 ## Input dialects
 
 Select the input dialect with `--spl-version 1|2` (default `1`) or
-`compiler.Options.SPLVersion`. Any other value is refused with
-`unsupported-spl-version` at 1:1; the compiler never falls back to classic SPL.
+`compiler.Options.SPLVersion`. In the API, `0` and `1` both select classic SPL;
+any other value is refused with `unsupported-spl-version` at 1:1. The CLI
+accepts only `1` and `2` and exits with a usage error for anything else. The
+compiler never falls back to classic SPL.
 
 | Version | Dialect | Status |
 |---|---|---|
