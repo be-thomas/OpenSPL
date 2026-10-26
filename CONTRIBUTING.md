@@ -14,6 +14,27 @@ make check     # format check, vet, tests, build
 ```
 
 Requirements: Go 1.24+ and `make`. Docker is optional, for the engine harness.
+Java 17 is needed only to regenerate the parser sources, not to build or test.
+
+## Generated parsers
+
+Both dialects are ANTLR grammars. Generated Go is committed, so a normal build
+never needs Java or the ANTLR jar.
+
+| Path | Contents |
+|---|---|
+| `pkg/parser/spl1/grammar/SPL1.g4` | Classic SPL grammar (source of truth) |
+| `pkg/parser/spl2/grammar/SPL2.g4` | SPL2 subset grammar (source of truth) |
+| `pkg/parser/spl1/gen`, `pkg/parser/spl2/gen` | Generated lexer, parser, visitor; never hand-edited |
+
+```bash
+make generate        # rewrite the gen/ trees (needs Java 17)
+make generate-check  # fail if gen/ is stale; runs in CI
+```
+
+Edit the `.g4`, run `make generate`, and commit both the grammar and the
+regenerated output. A change that edits only `gen/` is rejected by review and
+by `make generate-check`.
 
 ## Repository layout
 
@@ -22,8 +43,12 @@ Requirements: Go 1.24+ and `make`. Docker is optional, for the engine harness.
 | `cmd/openspl` | CLI entry point |
 | `pkg/ast` | Unified IR |
 | `pkg/diag` | Positioned diagnostics |
-| `pkg/parser/spl1` | Classic SPL front-end |
-| `pkg/parser/spl2` | SPL2 front-end (reserved) |
+| `pkg/parser/spl1` | Classic SPL front-end: stage driver, visitor, `Lex` adapter |
+| `pkg/parser/spl2` | SPL2 subset front-end |
+| `pkg/parser/commands` | Implemented and known command-name tables, per dialect |
+| `pkg/parser/internal/antlrpos` | Byte-accurate `ast.Pos` source map |
+| `pkg/parser/internal/antlrsupport` | Error listener and bail/recover |
+| `pkg/parser/internal/lexerparity` | Test-only SPL1/SPL2 lexical parity gate |
 | `pkg/mapping` | Field, index, and label mapping |
 | `pkg/emitter/esql` | ES\|QL back-end |
 | `pkg/emitter/promql` | PromQL back-end |
@@ -65,8 +90,11 @@ Reject mixed label matchers in PromQL
 
 1. **IR:** add a stage or expression node in `pkg/ast` if no existing node fits.
    Every node implements `StageName()`/`Position()` or `exprNode()`/`Position()`.
-2. **Parser:** lex and parse the command in `pkg/parser/spl1`. If the command is
-   recognized but not implemented, add it to `knownCommands` so users get
+2. **Grammar:** add the command's rule to the relevant `.g4`, run
+   `make generate`, and lower the new rule context in that front-end's
+   `build.go`. The Go driver in `parse.go` only sequences stages and classifies
+   command names; it is not a second parser. If the command is recognized but
+   not implemented, add it to `pkg/parser/commands` so users get
    `unsupported-command` rather than a misleading syntax error.
 3. **Emitters:** implement the ES|QL mapping and decide the PromQL tier
    (supported or refused). An unsupported stage must return a diagnostic with a
@@ -124,15 +152,15 @@ Do not parse SPL in the emitter. If the IR lacks something, add an IR node.
 | Errors | `diag.NewError` with a stable code and source position |
 | Warnings | `warnf` with a code that appears in `docs/COMPATIBILITY.md` |
 | Naming | Short, package-local; exported API documented |
-| Dependencies | Standard library only; justify any exception in an ADR |
+| Dependencies | Standard library plus the pinned ANTLR runtime; any further exception needs an ADR |
 | Tests | Table-driven; assert codes and exact output |
 
 ## Pull request checklist
 
-- [ ] `make check` passes
+- [ ] `make check` and `make generate-check` pass
 - [ ] New behavior has tests and, when relevant, a conformance case
 - [ ] Diagnostic codes are documented
-- [ ] No new third-party dependencies
+- [ ] No new third-party dependencies beyond the ANTLR runtime ([ADR 0004](docs/adr/0004-antlr-parsers.md))
 - [ ] Commit messages follow the hard rule
 - [ ] The PR description explains the semantic mapping and its risks
 

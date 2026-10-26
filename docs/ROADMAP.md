@@ -11,7 +11,7 @@ languages — not a Splunk clone, not an Elasticsearch client, and not a model.
 | Refuse rather than guess | Missing semantics are errors with positions, not approximations. |
 | Evidence over claims | Every mapping gets a golden test and, where possible, an engine-level check. |
 | Offline | No telemetry, no accounts, no network in the translation path. |
-| Boring dependencies | Go standard library only. |
+| Boring dependencies | One parser runtime and its transitive helper, both pinned and recorded in [ADR 0004](adr/0004-antlr-parsers.md); nothing else third-party. |
 
 ## Status
 
@@ -19,7 +19,7 @@ languages — not a Splunk clone, not an Elasticsearch client, and not a model.
 |---|---|---|
 | **0.1 — Foundation** | IR, SPL v1 parser, ES\|QL emitter, PromQL emitter, mapping, CLI, corpus, CI | ✅ Shipped |
 | **0.2 — Validation** | Docker harness for Splunk, Elasticsearch, Prometheus; parity fixtures | 🧪 In progress |
-| **0.3 — SPL v2** | Separate grammar, typed expressions, `from` pipelines | 🗺️ Planned |
+| **0.3 — SPL v2** | Separate grammar, `from` pipelines, `where`, `stats` | 🚧 Subset shipped |
 | **0.4 — Command coverage** | `dedup`, `top`, `rare`, `eventstats`, `streamstats`, `rename`, `fillnull` | 🗺️ Planned |
 | **0.5 — Migration tooling** | Batch mode, saved-search and dashboard extraction, diff reports | 💡 Proposed |
 | **1.0 — Stable contract** | Frozen diagnostic codes and flags, semantic versioning, signed releases | 🎯 Target |
@@ -28,7 +28,7 @@ languages — not a Splunk clone, not an Elasticsearch client, and not a model.
 
 - [x] Unified IR (`pkg/ast`)
 - [x] Positioned diagnostics (`pkg/diag`)
-- [x] Classic SPL lexer and parser
+- [x] Classic SPL lexer and parser (ANTLR grammar, generated Go)
 - [x] `search`, `where`, `stats`, `timechart`, `eval`, `rex`, `table`, `fields`, `sort`, `head`, `bin`
 - [x] ES|QL emitter
 - [x] PromQL emitter with semantic refusal
@@ -49,12 +49,17 @@ languages — not a Splunk clone, not an Elasticsearch client, and not a model.
 
 ## 0.3 — SPL v2
 
-- [ ] SPL2 lexer and grammar
-- [ ] `from` sources, `where`, `select`, `eval`, `stats`, `timechart`
+Shipped subset: `from`, `where`, `stats`, selected with `--spl-version 2`.
+
+- [x] SPL2 lexer and grammar (separate ANTLR grammar, generated Go)
+- [x] `from` sources, `where`, `stats`
+- [x] Shared IR nodes with classic SPL where semantics match
+- [x] Distinct diagnostics for dialect differences (`unsupported-dataset`,
+  `unsupported-command`, `unknown-command`)
+- [x] `--spl-version 1|2` (default: 1)
+- [ ] `select`, `eval`, `sort`, `head`, `fields`, `table`, `timechart`
 - [ ] Typed expressions and function signatures
-- [ ] Shared IR nodes with classic SPL where semantics match
-- [ ] Distinct diagnostics for dialect differences
-- [ ] `--spl-version 1|2` (default: auto-detect, then explicit)
+- [ ] Namespaced datasets (data models, lookups)
 
 ## 0.4 — Broader command coverage
 

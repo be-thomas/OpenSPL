@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Parsing for both dialects is generated from ANTLR grammars
+  (`pkg/parser/spl1/grammar/SPL1.g4`, `pkg/parser/spl2/grammar/SPL2.g4`). The
+  generated Go is committed, so builds and releases need neither Java nor the
+  ANTLR jar; `make generate-check` fails on drift.
+- A working SPL2 subset: `from <dataset>`, `where`, and `stats`, selected with
+  `--spl-version 2` (or `compiler.Options.SPLVersion`). `from main` lowers to
+  the same IR as `index=main`, so all emitters and mappings apply unchanged.
+- `unsupported-dataset` for namespaced SPL2 datasets and
+  `unsupported-spl-version` for unknown dialect numbers.
+- Conformance cases under `cases/spl2/` and an `options.spl_version` metadata
+  key; unknown versions fail the case instead of silently running as classic
+  SPL.
+- Fuzz targets `FuzzParseSPL1` and `FuzzParseSPL2`, and a lexer-parity test
+  that tokenizes one corpus with both generated lexers.
+
+### Changed
+
+- The module graph is no longer empty: the binary links the ANTLR Go runtime
+  and its transitive `golang.org/x/exp` helper. [ADR 0004](docs/adr/0004-antlr-parsers.md)
+  records the exception and the pinned version pair.
+- SPL2 no longer returns `spl2-not-implemented`; constructs outside the subset
+  are refused with a positioned `unsupported-command`, `unknown-command`, or
+  `unsupported-dataset` diagnostic.
+
 ### Fixed
 
 - ES|QL aggregations now use the valid `alias = COUNT(*)` form instead of the
@@ -44,7 +70,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Planned
 
-- SPL2 front-end
 - Docker parity harness results
 - `dedup`, `top`, `rare`, `rename`, `fillnull`
 - Batch migration reports

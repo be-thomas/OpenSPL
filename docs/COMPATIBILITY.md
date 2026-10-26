@@ -4,6 +4,33 @@ This page is the support contract for v0.1.x. A construct is either **exact**,
 **approximate** (emitted with a warning), or **refused** (positioned error).
 Nothing is silently rewritten.
 
+## Input dialects
+
+Select the input dialect with `--spl-version 1|2` (default `1`) or
+`compiler.Options.SPLVersion`. Any other value is refused with
+`unsupported-spl-version` at 1:1; the compiler never falls back to classic SPL.
+
+| Version | Dialect | Status |
+|---|---|---|
+| `1` (and `0` in the API) | Classic Splunk SPL | ✅ Supported, see below |
+| `2` | SPL2 subset | ✅ Supported: `from`, `where`, `stats` |
+
+The SPL2 subset differs from classic SPL in surface syntax and semantics:
+
+| Aspect | SPL2 subset |
+|---|---|
+| Pipeline start | Must be `from <dataset>`; a leading pipe is not accepted |
+| Dataset names | Plain index names, including `logs-*` and `logs-2024-01` |
+| Namespaced datasets | ⛔ `unsupported-dataset` (`datamodel:…`, `lookup:…`) |
+| Bare words | Field references on both sides of a comparison |
+| Conditions | Explicit `AND` is required; there is no implicit AND |
+| `stats` | Parenthesized aggregate calls; `distinct_count` normalizes to `dc` |
+| Wildcards | Only in a dataset name; `where status=*` is `syntax` |
+| Other commands | ⛔ `unsupported-command`, or `unknown-command` for a non-command word |
+
+`from main` lowers to the same IR as `index=main`, so index mapping, `FROM`
+emission, and PromQL `job` matchers behave exactly as for classic SPL.
+
 ## Commands
 
 | SPL command | Parser | ES\|QL | PromQL |
@@ -97,7 +124,7 @@ over index filters is refused with `promql-unsupported-filter`.
 
 ## Refused SPL commands
 
-Recognized but not implemented in v0.1:
+Recognized but not implemented in v0.1 (classic SPL; in SPL2, `from` is the start of a pipeline):
 
 `append`, `appendcols`, `addtotals`, `analyzefields`, `anomalydetection`,
 `apply`, `associate`, `bucket`, `chart`, `cluster`, `collect`, `contingency`,
@@ -129,7 +156,8 @@ They return `unsupported-command` with the command's source position.
 | `unknown-command` | Identifier that is not a known command |
 | `unsupported-subsearch` | `[ ... ]` subsearch |
 | `conflicting-time-bounds` | Same `earliest`/`latest` bound with different values |
-| `spl2-not-implemented` | SPL2 front-end is a stub |
+| `unsupported-dataset` | SPL2 dataset is namespaced and cannot become an index |
+| `unsupported-spl-version` | Dialect version is not 1 or 2 |
 
 ### ES|QL emitter
 

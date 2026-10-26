@@ -5,7 +5,7 @@
 
   [![CI](https://github.com/be-thomas/openspl/actions/workflows/ci.yml/badge.svg)](https://github.com/be-thomas/openspl/actions/workflows/ci.yml)
   [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
-  [![Dependencies](https://img.shields.io/badge/dependencies-0-34d399)](go.mod)
+  [![Dependencies](https://img.shields.io/badge/dependencies-1_runtime-34d399)](go.mod)
   [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
   [![Status](https://img.shields.io/badge/status-alpha-orange)](#project-status)
   [![PRs](https://img.shields.io/badge/PRs-welcome-22d3ee)](CONTRIBUTING.md)
@@ -17,7 +17,7 @@
   <h1>OpenSPL — Splunk SPL to Elastic ES|QL &amp; PromQL Transpiler</h1>
 
   <p><strong>Translate Splunk SPL into Elastic ES|QL or Prometheus PromQL.</strong><br />
-  Deterministic. Offline. Zero dependencies. Every warning points at the exact token.</p>
+  Deterministic. Offline. No runtime services. Every warning points at the exact token.</p>
 </div>
 
 ---
@@ -67,8 +67,10 @@ sum by (host) (increase(splunk_events_total{job="metrics"}[5m]))
 |---|---|---|---|
 | **`esql`** | Elasticsearch ES\|QL | ✅ Supported | Logs, search, stats, timecharts, regex extraction |
 | **`promql`** | Prometheus | ✅ Supported | Counters and rate-style time-series aggregations |
-| `spl2` | Splunk SPL2 | 🧪 Planned | Next-generation Splunk pipelines |
 | `kusto` | Azure Data Explorer | 💡 Proposed | Microsoft observability stacks |
+
+SPL2 is an **input dialect**, not a target. Pass `--spl-version 2` to parse the
+supported subset (`from`, `where`, `stats`) and emit either target above.
 
 ### Fidelity contract
 
@@ -145,6 +147,7 @@ openspl transpile --strict -f savedsearch.spl
 | `--index name` | Override the index selected in the query | from SPL |
 | `--metric name` | PromQL metric name | `splunk_events_total` |
 | `--span duration` | PromQL range window or timechart fallback | `5m` |
+| `--spl-version 1\|2` | Input dialect: classic SPL or the SPL2 subset | `1` |
 | `-f, --file file` | Read the query from a file (`-` = stdin) | stdin |
 | `--json` | Emit JSON with `ok`, `query`, and diagnostics | off |
 | `--strict` | Treat warnings as errors | off |
@@ -177,6 +180,24 @@ openspl transpile --strict -f savedsearch.spl
 
 **Recognized but not implemented** — `join`, `lookup`, `transaction`, `eventstats`, `streamstats`, `dedup`, `top`, `rare`, `chart`, `append`, `multisearch`, subsearches, and more. These return `unsupported-command` with a precise position rather than a misleading parse.
 
+### SPL2 subset
+
+With `--spl-version 2`, a pipeline must start at `from` and may continue with
+`where` and `stats`:
+
+```console
+$ openspl transpile --spl-version 2 'from main | where status=500 | stats count() AS count BY host'
+
+FROM main
+| WHERE status == 500
+| STATS count = COUNT(*) BY `host.name`
+```
+
+SPL2 semantics are not classic SPL: a bare word is a field reference on both
+sides of a comparison, and conditions need an explicit `AND`. Namespaced
+datasets (`datamodel:…`, `lookup:…`) and every command outside the subset are
+refused with a positioned diagnostic.
+
 Full matrix → [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
 
 ---
@@ -185,8 +206,8 @@ Full matrix → [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
 
 ```mermaid
 flowchart LR
-    A["SPL v1<br/>classic Splunk"] --> P1["spl1 parser"]
-    B["SPL v2<br/>planned"] --> P2["spl2 parser"]
+    A["SPL v1<br/>classic Splunk"] --> P1["spl1 ANTLR grammar"]
+    B["SPL v2<br/>supported subset"] --> P2["spl2 ANTLR grammar"]
     P1 --> IR["Unified IR<br/>pkg/ast"]
     P2 --> IR
     IR --> M["Mapping<br/>ECS · indexes · labels"]
@@ -201,8 +222,9 @@ flowchart LR
 
 | Layer | Package | Responsibility |
 |---|---|---|
-| Front-end | `pkg/parser/spl1` | Lex + parse classic SPL into IR. Knows nothing about targets. |
-| Front-end | `pkg/parser/spl2` | Reserved SPL2 grammar. |
+| Front-end | `pkg/parser/spl1` | ANTLR grammar and generated parser for classic SPL; lowers into IR. |
+| Front-end | `pkg/parser/spl2` | ANTLR grammar for the SPL2 subset (`from`, `where`, `stats`). |
+| Generated | `pkg/parser/*/gen` | Committed ANTLR output; edit the `.g4`, never these files. |
 | IR | `pkg/ast` | One typed pipeline shared by every language. |
 | Mapping | `pkg/mapping` | Splunk field → ECS field, index patterns, Prometheus labels. |
 | Back-end | `pkg/emitter/esql` | IR → ES\|QL. |
@@ -279,7 +301,7 @@ Only time-series aggregations. PromQL has no concept of raw log rows, so OpenSPL
 <details>
 <summary><strong>Does OpenSPL call an LLM or send my queries anywhere?</strong></summary>
 
-No. It is a Go compiler with zero external dependencies. Queries are processed in memory, and the process makes no network calls. This matters when searches contain internal hostnames, customer identifiers, or credentials.
+No. Queries are processed in memory, and the process makes no network calls. The binary links one third-party module, the ANTLR Go parser runtime; there are no services, plugins, or telemetry. This matters when searches contain internal hostnames, customer identifiers, or credentials.
 </details>
 
 <details>
@@ -291,7 +313,7 @@ OpenSPL is deterministic: the same input and mapping produce the same bytes. Eve
 <details>
 <summary><strong>Does it support SPL2?</strong></summary>
 
-Not yet. SPL2 lives in its own front-end package so its grammar and semantics do not leak into classic SPL. Until it ships, the package returns `spl2-not-implemented`.
+Partially: `--spl-version 2` accepts `from`, `where`, and `stats`, emitting the same targets as classic SPL. SPL2 lives in its own ANTLR grammar and front-end so its semantics do not leak into classic SPL. Every other SPL2 command is recognized and refused with a position; see [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 </details>
 
 <details>

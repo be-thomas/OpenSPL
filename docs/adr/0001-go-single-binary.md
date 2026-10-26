@@ -47,3 +47,7 @@ Negative:
 
 Keep the module graph empty. Any proposed dependency must justify why the
 standard library is insufficient.
+
+Amended by [ADR 0004](0004-antlr-parsers.md): the ANTLR Go runtime and its one
+indirect module are allowed because parsing is expressed in ANTLR grammars.
+Any dependency beyond those two still needs its own ADR.
