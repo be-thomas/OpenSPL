@@ -1,0 +1,1 @@
+from main | stats distinct_count(user) AS users BY host

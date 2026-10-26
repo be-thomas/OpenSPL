@@ -29,7 +29,9 @@ Engines already running are reused.
 START_ENGINES=0 ./conformance/engines/run.sh
 
 # also parse the SPL against a Splunk container (slow: several minutes)
-SPLUNK_PASSWORD=changeme123 docker compose -f conformance/engines/docker-compose.yml --profile splunk up -d
+SPLUNK_PASSWORD=changeme123 docker compose \
+  -f conformance/engines/docker-compose.yml \
+  -f conformance/engines/docker-compose.splunk.yml up -d
 SPLUNK=1 SPLUNK_PASSWORD=changeme123 ./conformance/engines/run.sh
 
 # alternate endpoints

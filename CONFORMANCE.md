@@ -16,6 +16,7 @@ conformance/
 │   ├── shaping/               table, fields, sort, head
 │   ├── mapping/               custom field and index mappings
 │   ├── promql/                PromQL-specific output and refusals
+│   ├── spl2/                  SPL2 subset (`spl_version: 2`)
 │   └── errors/                parser and unsupported-construct refusals
 ├── fixtures/
 │   ├── mappings/              mapping files referenced by case metadata
@@ -56,7 +57,8 @@ exercised by that case. A case must be exercised by at least one target.
   "options": {
     "metric": "http_requests_total",
     "span": "1m",
-    "index": "logs-*"
+    "index": "logs-*",
+    "spl_version": 2
   },
   "targets": {
     "esql": {
@@ -75,7 +77,8 @@ exercised by that case. A case must be exercised by at least one target.
 |---|---|
 | `description` | Free text. Never asserted. |
 | `mapping` | Mapping file, relative to the case file. |
-| `options` | `metric`, `span`, and `index` passed to the compiler. |
+| `options` | `metric`, `span`, `index`, and `spl_version` passed to the compiler. |
+| `options.spl_version` | Input dialect. `1` (or absent) is classic SPL, `2` is the SPL2 subset. Any other value fails the case rather than silently falling back. |
 | `targets.<target>.diagnostics` | The complete warning/info list with exact positions. Order is line, then column, then severity (`error`, `info`, `warning`), then code. |
 | `targets.<target>.error` | The target must refuse the query with this error code and position. No golden file may exist. |
 
@@ -110,6 +113,7 @@ Directories are the suite grouping, so Go's `-run` selects an area:
 ```sh
 go test ./conformance -run 'TestConformance/promql' -v
 go test ./conformance -run 'TestConformance/errors' -v
+go test ./conformance -run 'TestConformance/spl2' -v
 ```
 
 Cases and their per-target checks run in parallel, bounded by `GOMAXPROCS`, so

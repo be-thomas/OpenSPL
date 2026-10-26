@@ -1,0 +1,22 @@
+{
+  "description": "the SPL2 subset has no meaning for a wildcard inside an expression",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 26
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 26
+      }
+    }
+  }
+}

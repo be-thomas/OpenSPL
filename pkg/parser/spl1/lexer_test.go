@@ -91,6 +91,74 @@ func TestLexInvalidByteIsReportedAsAByte(t *testing.T) {
 	}
 }
 
+// TestNumberRangeIsALexicalError checks that a number too large for a float64
+// is refused before parsing begins, so it wins over a semantic error in an
+// earlier stage, exactly like any other lexical error.
+func TestNumberRangeIsALexicalError(t *testing.T) {
+	tests := []struct {
+		src  string
+		line int
+		col  int
+	}{
+		{`1e400`, 1, 1},
+		{`1e400 | stats count`, 1, 1},
+		{`index=web 1e400 | join a b`, 1, 11},
+		{`index=web | join a b | stats count 1e400`, 1, 36},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != "syntax" || d.Pos.Line != tc.line || d.Pos.Col != tc.col {
+				t.Fatalf("diagnostic = %#v, want syntax at %d:%d", d, tc.line, tc.col)
+			}
+			if want := `invalid number "1e400"`; d.Message != want {
+				t.Fatalf("message = %q, want %q", d.Message, want)
+			}
+		})
+	}
+}
+
+// TestInvalidNumericLiteralQuotesTheRun checks the letter-run diagnostic: the
+// quoted text is the whole malformed literal, not the numeric prefix alone.
+func TestInvalidNumericLiteralQuotesTheRun(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{`index=web 5month`, "5month"},
+		{`index=web 1monx`, "1monx"},
+		// The run stops at the operator: `1e` is the contiguous letter run.
+		{`index=web 1e+foo`, "1e"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != "syntax" || d.Pos.Line != 1 || d.Pos.Col != 11 {
+				t.Fatalf("diagnostic = %#v, want syntax at 1:11", d)
+			}
+			if want := `invalid numeric literal "` + tc.want + `"`; d.Message != want {
+				t.Fatalf("message = %q, want %q", d.Message, want)
+			}
+		})
+	}
+}
+
 func TestParsePositionAfterMultibyteString(t *testing.T) {
 	_, err := Parse(`index=web msg="café" +`)
 	if err == nil {

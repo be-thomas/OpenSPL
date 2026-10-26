@@ -1,0 +1,9 @@
+# ANTLR output is generated; review the .g4 grammar instead.
+pkg/parser/*/gen/** linguist-generated=true
+pkg/parser/*/gen/** -diff
+
+*.g4 linguist-language=ANTLR
+*.g4 text eol=lf
+
+go.sum text eol=lf
+*.sh text eol=lf

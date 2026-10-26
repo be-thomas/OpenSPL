@@ -1,0 +1,6 @@
+{
+  "description": "a bare from stage becomes the index filter both emitters already understand",
+  "options": {
+    "spl_version": 2
+  }
+}

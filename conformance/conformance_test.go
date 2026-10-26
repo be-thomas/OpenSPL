@@ -37,9 +37,10 @@ type expectation struct {
 }
 
 type options struct {
-	Metric string `json:"metric,omitempty"`
-	Span   string `json:"span,omitempty"`
-	Index  string `json:"index,omitempty"`
+	Metric     string `json:"metric,omitempty"`
+	Span       string `json:"span,omitempty"`
+	Index      string `json:"index,omitempty"`
+	SPLVersion int    `json:"spl_version,omitempty"`
 }
 
 type targetExpect struct {
@@ -247,6 +248,7 @@ func caseOptions(base string, exp expectation) (compiler.Options, error) {
 		opts.Metric = exp.Options.Metric
 		opts.Span = exp.Options.Span
 		opts.Index = exp.Options.Index
+		opts.SPLVersion = exp.Options.SPLVersion
 	}
 	if exp.Mapping != "" {
 		cfg, err := mapping.Load(filepath.Join(filepath.Dir(base), exp.Mapping))
@@ -273,6 +275,14 @@ func loadExpectation(t *testing.T, path string) expectation {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&exp); err != nil {
 		t.Fatalf("%s: %v", path, err)
+	}
+	if exp.Options != nil {
+		switch exp.Options.SPLVersion {
+		case 0, compiler.SPLVersion1, compiler.SPLVersion2:
+		default:
+			t.Fatalf("%s: unsupported spl_version %d; supported versions: 1, 2",
+				path, exp.Options.SPLVersion)
+		}
 	}
 	return exp
 }

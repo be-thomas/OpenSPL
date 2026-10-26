@@ -1,0 +1,22 @@
+{
+  "description": "a recognized SPL2 command outside the subset is refused with a position",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "unsupported-command",
+        "line": 1,
+        "col": 13
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "unsupported-command",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

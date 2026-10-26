@@ -139,6 +139,36 @@ func TestCLITranspile(t *testing.T) {
 			t.Fatalf("exit = %d, stdout = %q, stderr = %q", code, stdout, stderr)
 		}
 	})
+
+	t.Run("spl-version 2 selects SPL2", func(t *testing.T) {
+		code, stdout, stderr := runCaptured(t, "transpile", "--spl-version", "2",
+			"from main | where status=500")
+		if code != 0 || stderr != "" {
+			t.Fatalf("exit = %d, stderr = %q", code, stderr)
+		}
+		if stdout != "FROM main\n| WHERE status == 500\n" {
+			t.Fatalf("stdout = %q", stdout)
+		}
+	})
+
+	t.Run("spl-version defaults to classic SPL", func(t *testing.T) {
+		// `from` is a recognized classic SPL command, so without the flag this
+		// is an unsupported-command refusal rather than an SPL2 parse.
+		code, _, stderr := runCaptured(t, "transpile", "from main")
+		if code != 1 || !strings.Contains(stderr, "unsupported-command") {
+			t.Fatalf("exit = %d, stderr = %q", code, stderr)
+		}
+	})
+
+	t.Run("unsupported spl-version is a usage error before reading input", func(t *testing.T) {
+		for _, version := range []string{"0", "3", "two"} {
+			code, stdout, stderr := runCaptured(t, "transpile", "--spl-version", version)
+			if code != 2 || stdout != "" || !strings.Contains(stderr, "version") {
+				t.Fatalf("version %q: exit = %d, stdout = %q, stderr = %q",
+					version, code, stdout, stderr)
+			}
+		}
+	})
 }
 
 func TestCLIAST(t *testing.T) {
@@ -158,6 +188,18 @@ func TestCLIAST(t *testing.T) {
 	}
 	if len(payload.Stages) != 1 || payload.Stages[0].Expr == nil || payload.Stages[0].Expr.Op != "=" {
 		t.Fatalf("payload = %+v", payload)
+	}
+}
+
+func TestCLIASTSPL2(t *testing.T) {
+	code, stdout, stderr := runCaptured(t, "ast", "--spl-version", "2", "from main")
+	if code != 0 || stderr != "" {
+		t.Fatalf("exit = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{`"op": "="`, `"value": "main"`} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout = %q, want %s", stdout, want)
+		}
 	}
 }
 

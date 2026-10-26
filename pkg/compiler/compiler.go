@@ -11,6 +11,15 @@ import (
 	"github.com/be-thomas/openspl/pkg/emitter/promql"
 	"github.com/be-thomas/openspl/pkg/mapping"
 	"github.com/be-thomas/openspl/pkg/parser/spl1"
+	"github.com/be-thomas/openspl/pkg/parser/spl2"
+)
+
+// SPL dialect versions accepted by ParseVersion and Options.SPLVersion.
+const (
+	// SPLVersion1 is classic Splunk SPL, the default.
+	SPLVersion1 = 1
+	// SPLVersion2 is the supported SPL2 subset.
+	SPLVersion2 = 2
 )
 
 // Target names a supported back-end.
@@ -46,6 +55,10 @@ type Options struct {
 	Metric  string
 	Span    string
 	Mapping *mapping.Config
+
+	// SPLVersion selects the input dialect: zero and 1 mean classic SPL,
+	// 2 means the SPL2 subset. ParseVersion refuses every other value.
+	SPLVersion int
 }
 
 // Result is a translation result.
@@ -57,12 +70,32 @@ type Result struct {
 
 // Compile parses and translates a query in one call.
 func Compile(src string, target Target, opts Options) (*Result, *ast.Pipeline, error) {
-	p, err := spl1.Parse(src)
+	p, err := Parse(src, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 	res, err := Transpile(p, target, opts)
 	return res, p, err
+}
+
+// Parse parses src in the dialect selected by opts.SPLVersion.
+func Parse(src string, opts Options) (*ast.Pipeline, error) {
+	return ParseVersion(src, opts.SPLVersion)
+}
+
+// ParseVersion parses src with an explicit dialect version. Zero and 1 select
+// classic SPL, 2 selects the SPL2 subset, and anything else is refused at 1:1
+// rather than silently treated as classic SPL.
+func ParseVersion(src string, version int) (*ast.Pipeline, error) {
+	switch version {
+	case 0, SPLVersion1:
+		return spl1.Parse(src)
+	case SPLVersion2:
+		return spl2.Parse(src)
+	default:
+		return nil, diag.NewError(ast.Pos{Line: 1, Col: 1}, "unsupported-spl-version",
+			"unsupported SPL version %d; supported versions: 1, 2", version)
+	}
 }
 
 // Transpile translates an already-parsed pipeline.

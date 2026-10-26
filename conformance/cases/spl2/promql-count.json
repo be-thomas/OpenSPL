@@ -1,0 +1,24 @@
+{
+  "description": "SPL2 stats produces the same PromQL rate as classic SPL, with its warnings",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "promql": {
+      "diagnostics": [
+        {
+          "code": "default-span",
+          "severity": "warning",
+          "line": 1,
+          "col": 16
+        },
+        {
+          "code": "promql-window",
+          "severity": "warning",
+          "line": 1,
+          "col": 16
+        }
+      ]
+    }
+  }
+}

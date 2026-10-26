@@ -26,19 +26,7 @@ services:
     ports:
       - "9090:9090"
 
-  # Optional reference oracle for SPL parsing. Opt in with:
-  #   SPLUNK_PASSWORD=<password> docker compose --profile splunk up -d
-  splunk:
-    image: splunk/splunk:9.3
-    profiles: ["splunk"]
-    environment:
-      SPLUNK_START_ARGS: --accept-license
-      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?set SPLUNK_PASSWORD to use the splunk profile}
-    ports:
-      - "8000:8000"
-      - "8089:8089"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsSk https://localhost:8089/services/server/health || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 60
+# The optional Splunk reference oracle lives in docker-compose.splunk.yml. It is
+# a separate file because Compose interpolates every service it reads, even one
+# behind a profile, so a required SPLUNK_PASSWORD there would break the default
+# engine start.

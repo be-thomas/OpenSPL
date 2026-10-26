@@ -1,0 +1,1 @@
+from main | where status=500 | stats count() AS count BY host

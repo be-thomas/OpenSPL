@@ -1,0 +1,6 @@
+{
+  "description": "a trailing wildcard in a dataset name is preserved",
+  "options": {
+    "spl_version": 2
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "a namespaced dataset cannot become an Elasticsearch index",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "unsupported-dataset",
+        "line": 1,
+        "col": 6
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "unsupported-dataset",
+        "line": 1,
+        "col": 6
+      }
+    }
+  }
+}

@@ -34,7 +34,7 @@ jobs:
         run: make fmt-check
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
       - name: Test
         run: go test -race ./...
@@ -47,6 +47,26 @@ jobs:
           ./openspl version
           ./openspl transpile -t esql 'index=web status>=500 | stats count by host'
           ./openspl transpile -t promql --metric http_requests_total 'index=metrics | stats count by host'
+
+  generated:
+    name: generated parsers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache the pinned ANTLR jar
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/openspl
+          key: antlr-4.13.2
+
+      - name: Check generated code matches the grammars
+        run: make generate-check
 
   commit-message:
     name: commit messages

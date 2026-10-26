@@ -1,0 +1,24 @@
+name: openspl-e2e
+
+# Optional reference oracle for SPL parsing. Start it alongside the engines:
+#   SPLUNK_PASSWORD=<password> docker compose \
+#     -f conformance/engines/docker-compose.yml \
+#     -f conformance/engines/docker-compose.splunk.yml up -d
+#
+# SPLUNK_PASSWORD is required here: the Splunk image refuses to start without
+# it, and keeping the file opt-in keeps the default engine start independent of
+# it.
+services:
+  splunk:
+    image: splunk/splunk:9.3
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?set SPLUNK_PASSWORD to start the Splunk oracle}
+    ports:
+      - "8000:8000"
+      - "8089:8089"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSk https://localhost:8089/services/server/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 60

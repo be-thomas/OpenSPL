@@ -17,7 +17,7 @@ engines. Front-ends lower syntax into one IR; back-ends read only that IR.
 | Explainable failure | Every error and warning carries `line`, `column`, `offset`, a stable code, and a message. |
 | Target independence | Parsers never import emitters. Emitters never parse source syntax. |
 | Additive growth | A new language is a front-end; a new engine is a back-end; neither rewrites the other. |
-| Zero supply chain | The CLI has no third-party Go modules. |
+| Small supply chain | The binary links two third-party modules: the ANTLR Go parser runtime and the `golang.org/x/exp` package it uses; see [ADR 0004](adr/0004-antlr-parsers.md). |
 | Offline by default | Queries can contain sensitive identifiers; the process never sends them anywhere. |
 
 ## Package map
@@ -26,8 +26,10 @@ engines. Front-ends lower syntax into one IR; back-ends read only that IR.
 |---|---|---|
 | `pkg/ast` | stdlib only | Parsers, emitters, mapping |
 | `pkg/diag` | `pkg/ast` | Targets |
-| `pkg/parser/spl1` | `pkg/ast`, `pkg/diag` | ES\|QL, PromQL, mapping |
-| `pkg/parser/spl2` | `pkg/ast`, `pkg/diag` | ES\|QL, PromQL, mapping |
+| `pkg/parser/spl1` | `pkg/ast`, `pkg/diag`, `pkg/parser/commands`, `pkg/parser/internal/*`, generated `spl1/gen` | ES\|QL, PromQL, mapping |
+| `pkg/parser/spl2` | `pkg/ast`, `pkg/diag`, `pkg/parser/commands`, `pkg/parser/internal/*`, generated `spl2/gen` | ES\|QL, PromQL, mapping, the SPL1 front-end |
+| `pkg/parser/internal/antlrpos` | stdlib, ANTLR runtime, `pkg/ast` | Parsers, targets |
+| `pkg/parser/internal/antlrsupport` | `pkg/ast`, `pkg/diag`, `pkg/parser/internal/antlrpos`, ANTLR runtime | Targets |
 | `pkg/mapping` | stdlib only | Queries |
 | `pkg/emitter/esql` | `pkg/ast`, `pkg/diag`, `pkg/mapping` | SPL syntax |
 | `pkg/emitter/promql` | `pkg/ast`, `pkg/diag`, `pkg/mapping` | SPL syntax |
@@ -67,6 +69,38 @@ Expressions are deliberately small. A construct that cannot be represented
 faithfully becomes a positioned `unsupported-*` diagnostic rather than an
 untyped escape hatch.
 
+## Generated parsers
+
+Both dialects are described by ANTLR 4 grammars and generated into Go at build
+time by a maintainer, then committed:
+
+| Piece | Where |
+|---|---|
+| Classic SPL grammar | `pkg/parser/spl1/grammar/SPL1.g4` |
+| SPL2 subset grammar | `pkg/parser/spl2/grammar/SPL2.g4` |
+| Generated lexer, parser, visitor | `pkg/parser/spl1/gen`, `pkg/parser/spl2/gen` (never hand-edited) |
+| Regeneration | `make generate` (Java 17); `make generate-check` in CI |
+
+The generated code is committed so `go build`, `go install`, Docker, and
+release builds need neither Java nor the ANTLR jar. `.gitattributes` marks the
+`gen/` trees as generated, so review focuses on the `.g4` files.
+
+Three small Go layers surround the generated parsers:
+
+| Layer | Responsibility |
+|---|---|
+| `antlrpos.SourceMap` | Converts ANTLR rune indexes to byte-based `ast.Pos`, slices source text for exact spellings, and exposes byte adjacency for wildcard and hyphen runs. |
+| `antlrsupport` | Installs an error listener that records the first syntax error as a positioned `diag.Error`, aborts the parse, and maps grammar actions' aborts back to positions. |
+| Stage driver (`parse.go`, `spl2.go`) | Lexes the whole input first, sequences stages, classifies command names, and lowers each stage immediately, so a semantic error in an earlier stage still beats a grammar error in a later one. |
+
+The visitor lowering lives in `build.go` in each front-end. It converts rule
+contexts to IR nodes and owns the defaults and refusals the grammar leaves out
+(for example aggregate-name normalization).
+
+`pkg/parser/internal/lexerparity` holds a test-only gate: it tokenizes one
+corpus with both generated lexers and fails if the duplicated lexical rules
+drift.
+
 ## Semantic boundary: `search` vs `where`
 
 Classic SPL changes the meaning of the right-hand side depending on context:
@@ -76,9 +110,13 @@ Classic SPL changes the meaning of the right-hand side depending on context:
 | `search host=web` | string literal `"web"` |
 | `where host=web` | field reference `web` |
 
-The parser tracks this with a context flag (`searchLiterals`) and emits
-`StringLit` or `FieldRef` accordingly. Getting this wrong would silently turn a
-literal into a column reference, so it is covered by table-driven tests.
+The grammar encodes this with two parallel rule sets: `search*` rules (literal
+semantics) and `value*` rules (field semantics). The generator's ALL(*)
+prediction cannot prune alternatives on semantic predicates, so tight-token
+adjacency is first applied to the token stream in Go (`tight.go`), and the
+rule position alone decides which side a word lands on. Getting this wrong
+would silently turn a literal into a column reference, so it is covered by
+table-driven stage and position tests and by the lexer-parity gate.
 
 Other classic-SPL behaviors encoded in the front-end:
 
@@ -152,8 +190,11 @@ Exit codes are part of the contract:
 
 | Layer | Test type |
 |---|---|
-| Lexer | Token and position tests |
+| Lexer | Token and position tests; SPL1/SPL2 lexer-parity test |
+| Generated code | `make generate-check` re-runs the generator and fails on any diff |
 | Parser | Stage shape, semantics, precedence, error codes |
+| Fuzzing | `FuzzParseSPL1` and `FuzzParseSPL2`: arbitrary input is parsed or refused, never a panic |
+| Performance | `BenchmarkParse` in each front-end |
 | Mapping | Defaults, strict JSON, label sanitization |
 | Emitters | Golden strings and diagnostic codes |
 | Conformance (offline) | `conformance/cases/**/*.spl` vs `.esql` / `.promql` goldens, plus diagnostics |
@@ -161,12 +202,14 @@ Exit codes are part of the contract:
 
 ## Extending the compiler
 
-1. **New SPL command:** add IR nodes if needed, lex/parse it, then update every
-   emitter or return an explicit unsupported diagnostic.
+1. **New SPL command:** add IR nodes if needed, edit the `.g4`, run
+   `make generate`, implement the visitor method, then update every emitter or
+   return an explicit unsupported diagnostic.
 2. **New target:** create `pkg/emitter/<target>`, accept `*ast.Pipeline` and a
    mapping, return a query plus diagnostics. Register it in `pkg/compiler`.
-3. **New source dialect:** create `pkg/parser/<dialect>` and lower into the same
-   IR. Do not share parser internals unless the grammar is actually shared.
+3. **New source dialect:** create `pkg/parser/<dialect>` with its own grammar
+   and generated package, and lower into the same IR. Do not import another
+   front-end; share only `pkg/parser/internal` helpers.
 
-See [ADRs](adr/) for the decisions behind Go, the unified IR, and the
-"refuse rather than guess" policy.
+See [ADRs](adr/) for the decisions behind Go, the unified IR, the ANTLR
+parsers, and the "refuse rather than guess" policy.

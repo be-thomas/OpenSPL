@@ -1,0 +1,22 @@
+{
+  "description": "from is only valid as the first stage",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 10
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 10
+      }
+    }
+  }
+}

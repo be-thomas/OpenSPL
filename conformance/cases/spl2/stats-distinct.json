@@ -1,0 +1,6 @@
+{
+  "description": "distinct_count normalizes to the dc aggregate name",
+  "options": {
+    "spl_version": 2
+  }
+}

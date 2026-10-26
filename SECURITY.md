@@ -39,22 +39,28 @@ OpenSPL is an offline compiler. It parses text and prints text.
 | Telemetry | None |
 | Accounts or credentials | None |
 | Query persistence | None; input is processed in memory |
-| Third-party Go dependencies | None |
+| Third-party Go dependencies | One: the ANTLR Go parser runtime and its transitive `golang.org/x/exp` helper, both pinned in `go.mod` and recorded in [ADR 0004](docs/adr/0004-antlr-parsers.md) |
+| Build-time tools | ANTLR 4.13.2 and Java 17 are needed only to regenerate the committed parser code, never to build or run the binary |
 | Shell execution | None |
 | File writes | Only the output the caller redirects |
 
 The primary risks are therefore:
 
 1. **Parsing denial of service** — pathological input causing excessive CPU or
-   memory. Reports are welcome; the parser is single-pass and bounded by input
-   size, but nested expressions are recursive.
+   memory. Reports are welcome; lexing is single-pass and bounded by input size,
+   but nested expressions and ANTLR's adaptive prediction are recursive. The
+   generated parsers have fuzz targets (`FuzzParseSPL1`, `FuzzParseSPL2`); their
+   seed corpora run with the normal test suite, and every accepted failure must
+   be a positioned diagnostic, never a panic.
 2. **Diagnostic injection** — untrusted query text containing control characters
    that corrupt terminal output. Messages preserve source values; avoid piping
    diagnostics from untrusted sources into privileged logs without sanitizing.
 3. **Misleading translation** — a warning that is ignored. Use `--strict` in CI
    and review `rex-lossy`, `fulltext-approximation`, and `default-span` warnings.
-4. **Supply chain** — the module graph is empty. Verify releases against the
-   published checksums when available.
+4. **Supply chain** — the runtime graph is two pinned modules. Releases embed
+   `go.sum`; verify releases against their published checksums when available.
+   Generated parser sources are committed, so a release build compiles the same
+   Go files a reviewer can see, with no code generation step.
 
 ## Secrets in queries
 
