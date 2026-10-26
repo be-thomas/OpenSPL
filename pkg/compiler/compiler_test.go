@@ -350,6 +350,59 @@ func TestPromQL(t *testing.T) {
 	})
 }
 
+func TestParseVersion(t *testing.T) {
+	t.Run("zero and one are classic SPL", func(t *testing.T) {
+		for _, version := range []int{0, SPLVersion1} {
+			p, err := ParseVersion(`index=web status=500`, version)
+			if err != nil {
+				t.Fatalf("version %d: %v", version, err)
+			}
+			if len(p.Stages) != 1 {
+				t.Fatalf("version %d: got %d stages", version, len(p.Stages))
+			}
+		}
+	})
+
+	t.Run("two is the SPL2 subset", func(t *testing.T) {
+		p, err := ParseVersion(`from main | where status=500 | stats count()`, SPLVersion2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Stages) != 3 {
+			t.Fatalf("got %d stages, want 3", len(p.Stages))
+		}
+	})
+
+	t.Run("classic SPL is not accepted as SPL2", func(t *testing.T) {
+		_, err := ParseVersion(`index=web | stats count`, SPLVersion2)
+		ds, ok := diag.FromError(err)
+		if !ok || len(ds) == 0 || ds[0].Code != "syntax" ||
+			ds[0].Pos.Line != 1 || ds[0].Pos.Col != 1 {
+			t.Fatalf("error = %v, want syntax at 1:1", err)
+		}
+	})
+
+	t.Run("unsupported versions are refused at 1:1", func(t *testing.T) {
+		for _, version := range []int{-1, 3, 99} {
+			_, err := ParseVersion(`from main`, version)
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) == 0 || ds[0].Code != "unsupported-spl-version" ||
+				ds[0].Pos.Line != 1 || ds[0].Pos.Col != 1 {
+				t.Fatalf("version %d: error = %v", version, err)
+			}
+		}
+	})
+
+	t.Run("compile selects the dialect from options", func(t *testing.T) {
+		res := mustCompile(t, `from main | stats count() AS n`,
+			ESQL, Options{SPLVersion: SPLVersion2})
+		want := "FROM main\n| STATS n = COUNT(*)"
+		if res.Output != want {
+			t.Fatalf("output = %q, want %q", res.Output, want)
+		}
+	})
+}
+
 func TestParseTarget(t *testing.T) {
 	for _, name := range []string{"esql", "ESQL", "elastic", "elasticsearch"} {
 		if got, err := ParseTarget(name); err != nil || got != ESQL {

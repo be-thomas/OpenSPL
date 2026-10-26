@@ -15,7 +15,6 @@ import (
 	"github.com/be-thomas/openspl/pkg/compiler"
 	"github.com/be-thomas/openspl/pkg/diag"
 	"github.com/be-thomas/openspl/pkg/mapping"
-	"github.com/be-thomas/openspl/pkg/parser/spl1"
 	"github.com/be-thomas/openspl/pkg/version"
 )
 
@@ -65,9 +64,13 @@ Transpile flags:
       --index name           override the index selected by the query
       --metric name          PromQL metric name (default from mapping)
       --span duration        PromQL range window / timechart default (e.g. 5m)
+      --spl-version 1|2      input dialect (default 1: classic SPL; 2: SPL2)
   -f, --file file            read the query from a file ("-" for stdin)
       --json                 emit machine-readable JSON
       --strict               treat warnings as errors
+
+AST flags:
+      --spl-version 1|2      input dialect (default 1: classic SPL; 2: SPL2)
 
 Examples:
   openspl transpile 'index=web status=500 | stats count by host'
@@ -83,6 +86,7 @@ func cmdTranspile(args []string) int {
 	fs.SetOutput(io.Discard)
 
 	target := "esql"
+	splVersion := compiler.SPLVersion1
 	var mappingPath, index, metric, span, file string
 	var jsonOut, strict bool
 
@@ -92,6 +96,7 @@ func cmdTranspile(args []string) int {
 	fs.StringVar(&index, "index", "", "index override")
 	fs.StringVar(&metric, "metric", "", "PromQL metric name")
 	fs.StringVar(&span, "span", "", "span or range")
+	fs.IntVar(&splVersion, "spl-version", compiler.SPLVersion1, "input SPL dialect version")
 	fs.StringVar(&file, "file", "", "query file")
 	fs.StringVar(&file, "f", "", "query file")
 	fs.BoolVar(&jsonOut, "json", false, "JSON output")
@@ -109,6 +114,11 @@ func cmdTranspile(args []string) int {
 	t, err := compiler.ParseTarget(target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "openspl: %v\n", err)
+		return 2
+	}
+
+	if !supportedSPLVersion(splVersion) {
+		fmt.Fprintf(os.Stderr, "openspl: unsupported SPL version %d; supported versions: 1, 2\n", splVersion)
 		return 2
 	}
 
@@ -130,10 +140,11 @@ func cmdTranspile(args []string) int {
 	}
 
 	res, _, err := compiler.Compile(src, t, compiler.Options{
-		Index:   index,
-		Metric:  metric,
-		Span:    span,
-		Mapping: cfg,
+		Index:      index,
+		Metric:     metric,
+		Span:       span,
+		Mapping:    cfg,
+		SPLVersion: splVersion,
 	})
 
 	diagnostics := []diag.Diagnostic{}
@@ -200,12 +211,19 @@ func cmdAST(args []string) int {
 
 	fs := flag.NewFlagSet("ast", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	splVersion := compiler.SPLVersion1
 	var file string
 	fs.StringVar(&file, "file", "", "query file")
 	fs.StringVar(&file, "f", "", "query file")
+	fs.IntVar(&splVersion, "spl-version", compiler.SPLVersion1, "input SPL dialect version")
 
 	if err := fs.Parse(flagArgs); err != nil {
 		fmt.Fprintf(os.Stderr, "openspl: %v\n", err)
+		return 2
+	}
+
+	if !supportedSPLVersion(splVersion) {
+		fmt.Fprintf(os.Stderr, "openspl: unsupported SPL version %d; supported versions: 1, 2\n", splVersion)
 		return 2
 	}
 
@@ -214,7 +232,7 @@ func cmdAST(args []string) int {
 		fmt.Fprintf(os.Stderr, "openspl: %v\n", err)
 		return 2
 	}
-	p, err := spl1.Parse(src)
+	p, err := compiler.ParseVersion(src, splVersion)
 	if err != nil {
 		ds, ok := diag.FromError(err)
 		if !ok {
@@ -277,6 +295,13 @@ func readStdin() (string, error) {
 	return src, nil
 }
 
+// supportedSPLVersion lists the dialects the CLI accepts. Zero is the
+// compiler's "default" spelling for classic SPL, but the flag is explicit about
+// its value, so only 1 and 2 are accepted here.
+func supportedSPLVersion(v int) bool {
+	return v == compiler.SPLVersion1 || v == compiler.SPLVersion2
+}
+
 func hasWarnings(ds []diag.Diagnostic) bool {
 	for _, d := range ds {
 		if d.Severity == diag.SeverityWarning {
@@ -292,11 +317,12 @@ func hasWarnings(ds []diag.Diagnostic) bool {
 func splitFlags(args []string) (flagArgs, positional []string) {
 	takesValue := map[string]bool{
 		"target": true, "t": true,
-		"mapping": true,
-		"index":   true,
-		"metric":  true,
-		"span":    true,
-		"file":    true, "f": true,
+		"mapping":     true,
+		"index":       true,
+		"metric":      true,
+		"span":        true,
+		"spl-version": true,
+		"file":        true, "f": true,
 	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
