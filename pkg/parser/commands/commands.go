@@ -27,7 +27,8 @@ var spl1Implemented = map[string]bool{
 
 // spl1Known are real classic SPL commands that SPL1 does not implement yet.
 // Kept in alphabetical order so the list can be checked against the search
-// reference; the corpus adds the commands its documented examples use.
+// reference; a command missing from here is parsed as free text, which emits a
+// query instead of a refusal.
 var spl1Known = map[string]bool{
 	"addcoltotals": true, "addtotals": true, "analyzefields": true, "anomalies": true,
 	"anomalousvalue": true, "anomalydetection": true, "append": true, "appendcols": true,
@@ -39,27 +40,29 @@ var spl1Known = map[string]bool{
 	"eventstats": true, "extract": true, "fieldformat": true, "fieldsummary": true,
 	"filldown": true, "fillnull": true, "findtypes": true, "fit": true,
 	"folderize": true, "foreach": true, "format": true, "from": true,
-	"gauge": true, "geoip": true, "geom": true, "geostats": true,
-	"head": true, "highlight": true, "inputcsv": true, "inputlookup": true,
-	"iplocation": true, "join": true, "kmeans": true, "kvform": true,
-	"loadjob": true, "localize": true, "localop": true, "lookup": true,
-	"makecontinuous": true, "makemv": true, "makeresults": true, "map": true,
-	"mcollect": true, "metadata": true, "metasearch": true, "meventcollect": true,
-	"ml": true, "mstats": true, "multikmeans": true, "multisearch": true,
-	"mvcombine": true, "mvexpand": true, "nomv": true, "outlier": true,
+	"gauge": true, "gentimes": true, "geoip": true, "geom": true,
+	"geostats": true, "head": true, "highlight": true, "history": true,
+	"inputcsv": true, "inputlookup": true, "iplocation": true, "join": true,
+	"kmeans": true, "kvform": true, "loadjob": true, "localize": true,
+	"localop": true, "lookup": true, "makecontinuous": true, "makemv": true,
+	"makeresults": true, "map": true, "mcollect": true, "metadata": true,
+	"metasearch": true, "meventcollect": true, "ml": true, "mpreview": true,
+	"mstats": true, "multikmeans": true, "multisearch": true, "mvcombine": true,
+	"mvexpand": true, "nomv": true, "noop": true, "outlier": true,
 	"outputcsv": true, "outputlookup": true, "outputtext": true, "overlap": true,
 	"pivot": true, "predict": true, "rangemap": true, "rare": true,
 	"regex": true, "reltime": true, "rename": true, "replace": true,
 	"rest": true, "return": true, "reverse": true, "rex": true,
-	"script": true, "scrub": true, "search": true, "select": true,
-	"selfjoin": true, "sendemail": true, "set": true, "setfields": true,
-	"sitop": true, "spath": true, "stats": true, "strcat": true,
-	"streamstats": true, "table": true, "tags": true, "tail": true,
-	"timechart": true, "tojson": true, "top": true, "transaction": true,
-	"transpose": true, "trendline": true, "tscollect": true, "tstats": true,
-	"typeahead": true, "typer": true, "union": true, "uniq": true,
-	"untable": true, "where": true, "x11": true, "xmlkv": true,
-	"xmlunescape": true, "xpath": true,
+	"savedsearch": true, "script": true, "scrub": true, "search": true,
+	"searchtxn": true, "select": true, "selfjoin": true, "sendemail": true,
+	"set": true, "setfields": true, "sitop": true, "spath": true,
+	"stats": true, "strcat": true, "streamstats": true, "table": true,
+	"tags": true, "tail": true, "timechart": true, "tojson": true,
+	"top": true, "transaction": true, "transpose": true, "trendline": true,
+	"tscollect": true, "tstats": true, "typeahead": true, "typer": true,
+	"union": true, "uniq": true, "untable": true, "walklex": true,
+	"where": true, "x11": true, "xmlkv": true, "xmlunescape": true,
+	"xpath": true,
 }
 
 // SPL1Implemented reports whether the SPL1 front-end implements a command.
@@ -79,12 +82,22 @@ var spl2Implemented = map[string]bool{
 
 // spl2Known are SPL2 commands outside the supported subset. They are real
 // commands, so they get `unsupported-command` instead of `unknown-command`.
+// Every command the SPL2 search reference documents is listed, so a command
+// missing here is a gap in this table rather than a gap in the reference.
 var spl2Known = map[string]bool{
-	"append": true, "dedup": true, "eval": true, "eventstats": true,
-	"expand": true, "fields": true, "head": true, "join": true,
-	"lookup": true, "multisearch": true, "rare": true, "rename": true,
-	"rex": true, "search": true, "sort": true, "streamstats": true,
-	"table": true, "timechart": true, "top": true,
+	"addinfo": true, "append": true, "appendcols": true, "appendpipe": true,
+	"bin": true, "branch": true, "convert": true, "decrypt": true,
+	"dedup": true, "eval": true, "eventstats": true, "expand": true,
+	"fields": true, "fieldsummary": true, "fillnull": true, "flatten": true,
+	"head": true, "if": true, "into": true, "iplocation": true,
+	"join": true, "loadjob": true, "lookup": true, "makemv": true,
+	"makeresults": true, "mstats": true, "multisearch": true, "mvcombine": true,
+	"mvexpand": true, "nomv": true, "ocsf": true, "rare": true,
+	"rename": true, "replace": true, "reverse": true, "rex": true,
+	"route": true, "search": true, "sort": true, "spath": true,
+	"spl1": true, "streamstats": true, "table": true, "tags": true,
+	"thru": true, "timechart": true, "timewrap": true, "top": true,
+	"tstats": true, "typer": true, "union": true, "untable": true,
 }
 
 // SPL2Implemented reports whether the SPL2 front-end implements a command.

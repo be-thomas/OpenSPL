@@ -214,25 +214,29 @@ func runCorpus(t *testing.T, dir string, meta corpusMeta, queries []corpusQuery)
 	for i, q := range queries {
 		got, err := corpusOutcome(q.Query, version)
 		if err != nil {
+			// Rewriting a baseline cannot fix a panic or an unpositioned
+			// diagnostic, so this stays an error in update mode too.
 			report("%s: query %d %q: %v", dir, i+1, q.Query, err)
 			continue
 		}
-		if q.Expect == "" {
-			mismatches++
-			if *updateCorpus {
-				queries[i].Expect = got
-			} else {
-				report("%s: query %d %q: no baseline outcome (got %q)",
-					dir, i+1, q.Query, got)
-			}
+		if q.Expect == got {
 			continue
 		}
-		if q.Expect != got {
-			mismatches++
+		if *updateCorpus {
+			// -update-corpus rewrites and reports nothing: the diff is the
+			// output, and failing the run would make `make corpus-update`
+			// exit non-zero exactly when a re-record is what is wanted.
 			queries[i].Expect = got
-			report("%s: query %d %q: outcome %q, baseline says %q",
-				dir, i+1, q.Query, got, q.Expect)
+			continue
 		}
+		mismatches++
+		if q.Expect == "" {
+			report("%s: query %d %q: no baseline outcome (got %q)",
+				dir, i+1, q.Query, got)
+			continue
+		}
+		report("%s: query %d %q: outcome %q, baseline says %q",
+			dir, i+1, q.Query, got, q.Expect)
 	}
 	if mismatches > 20 {
 		t.Errorf("%s: %d queries differ in total", dir, mismatches)

@@ -23,8 +23,13 @@ syntax stays visible.
 
 The expected outcome on each line (accepted, or the diagnostic code of a
 refusal) is not written here. It is a snapshot of the current parser, recorded
-by `go test ./conformance -run TestCorpus -update`, so a behaviour change shows
-up as a reviewable corpus diff.
+by `go test ./conformance -run TestCorpus -update-corpus`, so a behaviour
+change shows up as a reviewable corpus diff.
+
+A fetch that fails is not treated as a page without queries: the run exits
+without writing, because the corpus would otherwise lose whatever that page
+held and the baseline diff would look like a documentation change. Pass
+`--allow-partial` to write anyway.
 """
 
 import argparse
@@ -89,14 +94,25 @@ HREF = re.compile(r'(?:hx-get|href)="(/en/[^"]+)"')
 TAG = re.compile(r"<[^>]+>")
 
 # Placeholder syntax in a documentation template, not a query.
+#
+# Brackets are deliberately absent: `[` starts a subsearch and an array
+# literal, so filtering every bracketed span would remove a whole class of real
+# queries. A template that uses `[...]` is caught by the words inside it, which
+# are the same metavariables and ellipses covered here.
 PLACEHOLDER = re.compile(
-    r"<[A-Za-z][^<>]*>|\[[^\]]*\]|\{[^}]*\}|\.\.\.|…|\$[A-Za-z_]\w*\$")
+    r"<[A-Za-z][^<>]*>|\{[^}]*\}|\.\.\.|…|\$[A-Za-z_]\w*\$")
+
+# A stand-in word the documentation writes where a command or field name
+# belongs, to show syntax rather than an example: `| commandname`. A block
+# containing one documents a grammar, not a query.
+METAVARIABLE = re.compile(r"\bcommandname\b")
 
 # A block is a query rather than a syntax template when it looks like the start
-# of a search or a pipeline stage.
+# of a search or a pipeline stage. `search` must be the command, not the start
+# of a parameter fragment such as `search="disabled=0"`.
 SEARCH_LEAD = re.compile(
     r"^(?:from\s|index\s*=|source\s*=|sourcetype\s*=|host\s*=|eventtype\s*=|"
-    r"tag\s*=|search\b)", re.I)
+    r"tag\s*=|search(?:\s|$))", re.I)
 
 # A documentation page often shows the other dialect beside its own: the SPL2
 # reference compares SPL2 syntax with the classic SPL equivalent, and the
@@ -180,6 +196,12 @@ def is_query(text, dialect):
         return False
     if PLACEHOLDER.search(text) or SHELL.search(text):
         return False
+    if METAVARIABLE.search(text):
+        return False
+    # A block that starts with a bracket is a configuration stanza such as
+    # `[my-access-extractions] REGEX=...`, never a pipeline.
+    if text.startswith("["):
+        return False
     if dialect == "spl1":
         # SPL2's `from ...` and `select ...` pipelines are refused by the SPL1
         # front-end as a known command, so they add a refusal, not coverage.
@@ -194,21 +216,27 @@ def is_query(text, dialect):
 
 
 def gather_group(base, group, cache_dir, pool, dialect):
-    """Map page path -> queries for one navigation group."""
+    """Map page path -> queries for one navigation group, and failed fetches.
+
+    A page that could not be fetched is counted, not skipped silently: the
+    caller refuses to write a corpus that is short because the network was.
+    """
     nav = fetch(nav_url(base, group), cache_dir)
     if nav is None:
-        return {}
+        return {}, 1
     pages = page_paths(nav, base)
     bodies = list(pool.map(lambda page: (page, fetch(fragment_url(base, page),
                                                      cache_dir)), pages))
     out = {}
+    failed = 0
     for page, body in bodies:
         if body is None:
+            failed += 1
             continue
         found = [q for q in code_blocks(body) if is_query(q, dialect)]
         if found:
             out[page] = found
-    return out
+    return out, failed
 
 
 def collect(args):
@@ -238,6 +266,7 @@ def collect(args):
 
     counts = {}
     empty = []
+    failed = 0
     with concurrent.futures.ThreadPoolExecutor(
             max_workers=args.workers) as pool:
         for src in sources:
@@ -247,8 +276,9 @@ def collect(args):
                                       else "")
                 got = {}
                 for group in src["groups"]:
-                    pages = gather_group(base, group, args.cache, pool,
-                                         src["dialect"])
+                    pages, group_failed = gather_group(
+                        base, group, args.cache, pool, src["dialect"])
+                    failed += group_failed
                     for page, queries in pages.items():
                         for q in queries:
                             entry = seen.setdefault(
@@ -263,6 +293,14 @@ def collect(args):
                 if not got:
                     empty.append((src["key"], version))
             counts[src["key"]] = per_version
+    # A page that failed while its neighbours succeeded would drop its queries
+    # from the corpus without changing anything else, and TestCorpus cannot tell
+    # that from the documentation having removed them. Refuse to write instead;
+    # the cache makes the retry cheap.
+    if failed and not args.allow_partial:
+        sys.exit("%d page fetches failed, so the corpus would lose their "
+                 "queries; re-run to retry them, or pass --allow-partial to "
+                 "write the corpus anyway" % failed)
     if empty:
         # A version with no pages is almost always one whose documentation
         # redirects to the login page, and recording it would claim coverage
@@ -358,6 +396,8 @@ def main():
                    help="comma-separated Splunk Enterprise versions")
     p.add_argument("--no-cache", action="store_true",
                    help="ignore the page cache")
+    p.add_argument("--allow-partial", action="store_true",
+                   help="write the corpus even if page fetches failed")
     p.add_argument("--workers", type=int, default=8,
                    help="concurrent page fetches (default: 8)")
     args = p.parse_args()
