@@ -2,12 +2,15 @@ package spl1
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/antlr4-go/antlr/v4"
+
 	"github.com/be-thomas/openspl/pkg/ast"
 	"github.com/be-thomas/openspl/pkg/diag"
+	"github.com/be-thomas/openspl/pkg/parser/internal/antlrpos"
+	"github.com/be-thomas/openspl/pkg/parser/spl1/gen"
 )
 
 // Kind is a lexical token kind.
@@ -112,245 +115,190 @@ func (t Token) describe() string {
 	return t.Kind.String()
 }
 
-type lexer struct {
-	src  string
-	i    int
-	line int
-	col  int
-	toks []Token
-}
-
-// Lex tokenizes a classic SPL query. It is exported for the SPL2 front-end and
-// for tooling that needs token-level access.
+// Lex tokenizes a classic SPL query. It is exported for tooling that needs
+// token-level access and is a thin adapter over the generated ANTLR lexer:
+// keyword tokens are reported as identifiers, and string literals carry their
+// decoded value.
 func Lex(src string) ([]Token, error) {
-	l := &lexer{src: src, line: 1, col: 1}
-	for {
-		l.skipSpace()
-		if l.i >= len(l.src) {
-			l.toks = append(l.toks, Token{Kind: EOF, Pos: l.pos()})
-			return l.toks, nil
-		}
-
-		pos := l.pos()
-		ch := l.src[l.i]
-		switch {
-		case ch == '|':
-			l.advance()
-			l.emit(Pipe, "|", pos)
-		case ch == ',':
-			l.advance()
-			l.emit(Comma, ",", pos)
-		case ch == '(':
-			l.advance()
-			l.emit(LParen, "(", pos)
-		case ch == ')':
-			l.advance()
-			l.emit(RParen, ")", pos)
-		case ch == '[':
-			l.advance()
-			l.emit(LBracket, "[", pos)
-		case ch == ']':
-			l.advance()
-			l.emit(RBracket, "]", pos)
-		case ch == '"' || ch == '\'':
-			text, err := l.scanString(ch, pos)
-			if err != nil {
-				return nil, err
-			}
-			l.emitString(text, pos)
-		case isDigit(ch):
-			if err := l.scanNumber(pos); err != nil {
-				return nil, err
-			}
-		case isIdentStart(ch):
-			start := l.i
-			for l.i < len(l.src) && isIdentPart(l.src[l.i]) {
-				l.advance()
-			}
-			l.emit(Ident, l.src[start:l.i], pos)
-		case ch == '=':
-			l.advance()
-			text := "="
-			if l.i < len(l.src) && l.src[l.i] == '=' {
-				l.advance()
-				text = "=="
-			}
-			l.emit(Eq, text, pos)
-		case ch == '!':
-			l.advance()
-			if l.i < len(l.src) && l.src[l.i] == '=' {
-				l.advance()
-				l.emit(Ne, "!=", pos)
-			} else {
-				l.emit(Bang, "!", pos)
-			}
-		case ch == '<':
-			l.advance()
-			if l.i < len(l.src) && l.src[l.i] == '=' {
-				l.advance()
-				l.emit(Le, "<=", pos)
-			} else {
-				l.emit(Lt, "<", pos)
-			}
-		case ch == '>':
-			l.advance()
-			if l.i < len(l.src) && l.src[l.i] == '=' {
-				l.advance()
-				l.emit(Ge, ">=", pos)
-			} else {
-				l.emit(Gt, ">", pos)
-			}
-		case ch == '+':
-			l.advance()
-			l.emit(Plus, "+", pos)
-		case ch == '-':
-			l.advance()
-			l.emit(Minus, "-", pos)
-		case ch == '*':
-			l.advance()
-			l.emit(Star, "*", pos)
-		case ch == '/':
-			l.advance()
-			l.emit(Slash, "/", pos)
-		case ch == '%':
-			l.advance()
-			l.emit(Percent, "%", pos)
-		default:
-			r, size := utf8.DecodeRuneInString(l.src[l.i:])
-			if r == utf8.RuneError && size == 1 {
-				return nil, diag.NewError(pos, "syntax", "unexpected byte 0x%02X", ch)
-			}
-			return nil, diag.NewError(pos, "syntax", "unexpected character %q", string(r))
-		}
+	m := antlrpos.New(src)
+	stream, err := newTokenStream(m, src)
+	if err != nil {
+		return nil, err
 	}
+	toks := stream.GetAllTokens()
+	out := make([]Token, 0, len(toks))
+	for _, t := range toks {
+		tok, err := convertToken(m, t)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tok)
+	}
+	return out, nil
 }
 
-func (l *lexer) pos() ast.Pos {
-	return ast.Pos{Line: l.line, Col: l.col, Offset: l.i}
-}
-
-func (l *lexer) emit(k Kind, text string, pos ast.Pos) {
-	l.toks = append(l.toks, Token{Kind: k, Text: text, Pos: pos})
-}
-
-func (l *lexer) emitString(text string, pos ast.Pos) {
-	l.toks = append(l.toks, Token{Kind: String, Text: text, Pos: pos})
-}
-
-func (l *lexer) advance() byte {
-	ch := l.src[l.i]
-	l.i++
-	if ch == '\n' {
-		l.line++
-		l.col = 1
-	} else {
-		l.col++
+// newTokenStream runs the generated lexer over src, fills the stream so every
+// token is available up front, and applies the invalid-token pass. Lexing the
+// whole input before parsing keeps the hand parser's priority: a lexical error
+// in a later stage beats a semantic error in an earlier one. The returned
+// stream answers the parser's lookahead with the value-run token types (see
+// tightStream); GetAllTokens still returns the lexer's own tokens.
+func newTokenStream(m *antlrpos.SourceMap, src string) (*tightStream, error) {
+	lexer := spl1gen.NewSPL1Lexer(antlr.NewInputStream(src))
+	lexer.RemoveErrorListeners()
+	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
+	stream.Fill()
+	toks := stream.GetAllTokens()
+	if err := checkTokens(m, toks, src); err != nil {
+		return nil, err
 	}
-	return ch
+	return &tightStream{CommonTokenStream: stream, types: tightTokenTypes(toks)}, nil
 }
 
-func (l *lexer) skipSpace() {
-	for l.i < len(l.src) {
-		switch l.src[l.i] {
-		case ' ', '\t', '\r', '\n':
-			l.advance()
-		default:
-			return
-		}
-	}
-}
-
-func (l *lexer) scanString(quote byte, pos ast.Pos) (string, error) {
-	l.advance() // opening quote
-	var b strings.Builder
-	for l.i < len(l.src) {
-		ch := l.advance()
-		if ch == quote {
-			return b.String(), nil
-		}
-		// Only the quote itself is unescaped. Backslashes are preserved so
-		// regular expressions survive intact (`\d`, `\S`, and `\\`).
-		if ch == '\\' && l.i < len(l.src) && l.src[l.i] == quote {
-			l.advance()
-			b.WriteByte(quote)
-			continue
-		}
-		b.WriteByte(ch)
-	}
-	return "", diag.NewError(pos, "syntax", "unterminated string literal")
-}
-
-func (l *lexer) scanNumber(pos ast.Pos) error {
-	start := l.i
-	for l.i < len(l.src) && isDigit(l.src[l.i]) {
-		l.advance()
-	}
-	if l.i < len(l.src) && l.src[l.i] == '.' && l.i+1 < len(l.src) && isDigit(l.src[l.i+1]) {
-		l.advance()
-		for l.i < len(l.src) && isDigit(l.src[l.i]) {
-			l.advance()
-		}
-	}
-	// Scientific notation: 1e3, 2.5E-2.
-	if l.i < len(l.src) && (l.src[l.i] == 'e' || l.src[l.i] == 'E') {
-		j := l.i + 1
-		if j < len(l.src) && (l.src[j] == '+' || l.src[j] == '-') {
-			j++
-		}
-		if j < len(l.src) && isDigit(l.src[j]) {
-			for l.i < j {
-				l.advance()
+// checkTokens reports the first lexically invalid token in source order.
+//
+// ANTLR's lexer never fails: a character no rule accepts becomes UNKNOWN, and
+// a numeric literal immediately followed by a letter lexes as a valid number
+// plus an identifier. Both are lexical errors in SPL, reported at the start of
+// the offending token before any parsing begins.
+func checkTokens(m *antlrpos.SourceMap, toks []antlr.Token, src string) error {
+	for i, t := range toks {
+		switch t.GetTokenType() {
+		case spl1gen.SPL1ParserUNKNOWN:
+			return invalidCharacter(m, t, src)
+		case spl1gen.SPL1ParserNUMBER, spl1gen.SPL1ParserDURATION:
+			next := nextToken(toks, i)
+			if next == nil || next.GetTokenType() == antlr.TokenEOF {
+				continue
 			}
-			for l.i < len(l.src) && isDigit(l.src[l.i]) {
-				l.advance()
+			if t.GetStop()+1 != next.GetStart() {
+				continue
 			}
+			at := m.ByteOffset(next.GetStart())
+			if at >= len(src) || !isLetter(src[at]) {
+				continue
+			}
+			start := m.ByteOffset(t.GetStart())
+			end := at + 1
+			if end > len(src) {
+				end = len(src)
+			}
+			return diag.NewError(m.Pos(t), "syntax",
+				"invalid numeric literal %q", src[start:end])
 		}
 	}
-
-	num := l.src[start:l.i]
-	unit := l.scanDurationUnit()
-	if unit != "" {
-		l.toks = append(l.toks, Token{Kind: Duration, Text: num + unit, Pos: pos})
-		return nil
-	}
-	if l.i < len(l.src) && isLetter(l.src[l.i]) {
-		return diag.NewError(pos, "syntax", "invalid numeric literal %q", l.src[start:l.i+1])
-	}
-	if _, err := strconv.ParseFloat(num, 64); err != nil {
-		return diag.NewError(pos, "syntax", "invalid number %q", num)
-	}
-	l.toks = append(l.toks, Token{Kind: Number, Text: num, Pos: pos})
 	return nil
 }
 
-// scanDurationUnit consumes the longest valid SPL time unit at the cursor.
-func (l *lexer) scanDurationUnit() string {
-	rest := l.src[l.i:]
-	for _, unit := range []string{"mon", "ms", "s", "m", "h", "d", "w", "y"} {
-		if strings.HasPrefix(rest, unit) {
-			after := l.i + len(unit)
-			if after < len(l.src) && isLetter(l.src[after]) {
-				continue
-			}
-			for range unit {
-				l.advance()
-			}
-			return unit
-		}
+func nextToken(toks []antlr.Token, i int) antlr.Token {
+	if i+1 < len(toks) {
+		return toks[i+1]
 	}
-	return ""
+	return nil
 }
 
-func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+func invalidCharacter(m *antlrpos.SourceMap, t antlr.Token, src string) error {
+	at := m.ByteOffset(t.GetStart())
+	if at >= len(src) {
+		return diag.NewError(m.Pos(t), "syntax", "unexpected end of query")
+	}
+	r, size := utf8.DecodeRuneInString(src[at:])
+	if r == utf8.RuneError && size == 1 {
+		return diag.NewError(m.Pos(t), "syntax", "unexpected byte 0x%02X", src[at])
+	}
+	return diag.NewError(m.Pos(t), "syntax", "unexpected character %q", string(r))
+}
+
+// convertToken maps a generated token onto the public token kind.
+func convertToken(m *antlrpos.SourceMap, t antlr.Token) (Token, error) {
+	pos := m.Pos(t)
+	switch t.GetTokenType() {
+	case spl1gen.SPL1ParserEOF:
+		return Token{Kind: EOF, Pos: pos}, nil
+	case spl1gen.SPL1ParserIDENT,
+		spl1gen.SPL1ParserSEARCH, spl1gen.SPL1ParserWHERE, spl1gen.SPL1ParserSTATS,
+		spl1gen.SPL1ParserTIMECHART, spl1gen.SPL1ParserEVAL, spl1gen.SPL1ParserREX,
+		spl1gen.SPL1ParserTABLE, spl1gen.SPL1ParserFIELDS, spl1gen.SPL1ParserSORT,
+		spl1gen.SPL1ParserHEAD, spl1gen.SPL1ParserBIN, spl1gen.SPL1ParserBY,
+		spl1gen.SPL1ParserAS, spl1gen.SPL1ParserSPAN, spl1gen.SPL1ParserLIMIT,
+		spl1gen.SPL1ParserFIELD, spl1gen.SPL1ParserAND, spl1gen.SPL1ParserOR,
+		spl1gen.SPL1ParserNOT:
+		return Token{Kind: Ident, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserSTRING:
+		return Token{Kind: String, Text: decodeString(t.GetText()), Pos: pos}, nil
+	case spl1gen.SPL1ParserNUMBER:
+		return Token{Kind: Number, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserDURATION:
+		return Token{Kind: Duration, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserPIPE:
+		return Token{Kind: Pipe, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserCOMMA:
+		return Token{Kind: Comma, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserLPAREN:
+		return Token{Kind: LParen, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserRPAREN:
+		return Token{Kind: RParen, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserLBRACKET:
+		return Token{Kind: LBracket, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserRBRACKET:
+		return Token{Kind: RBracket, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserEQ2, spl1gen.SPL1ParserEQ:
+		return Token{Kind: Eq, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserNE:
+		return Token{Kind: Ne, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserLT:
+		return Token{Kind: Lt, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserLE:
+		return Token{Kind: Le, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserGT:
+		return Token{Kind: Gt, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserGE:
+		return Token{Kind: Ge, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserPLUS:
+		return Token{Kind: Plus, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserMINUS:
+		return Token{Kind: Minus, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserSTAR:
+		return Token{Kind: Star, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserSLASH:
+		return Token{Kind: Slash, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserPERCENT:
+		return Token{Kind: Percent, Text: t.GetText(), Pos: pos}, nil
+	case spl1gen.SPL1ParserBANG:
+		return Token{Kind: Bang, Text: t.GetText(), Pos: pos}, nil
+	}
+	return Token{}, invalidCharacterFrom(m, t)
+}
+
+// invalidCharacterFrom is the defensive path for a token type convertToken
+// does not know; checkTokens has already refused UNKNOWN, so reaching it means
+// the grammar gained a token the adapter was not updated for.
+func invalidCharacterFrom(m *antlrpos.SourceMap, t antlr.Token) error {
+	return diag.NewError(m.Pos(t), "syntax", "unexpected %q", t.GetText())
+}
+
+// decodeString returns the value of a string literal token: the delimiters are
+// dropped and only an escaped delimiter is unescaped. Every other backslash is
+// kept so regular expressions survive intact.
+func decodeString(raw string) string {
+	if len(raw) < 2 {
+		return ""
+	}
+	quote := raw[0]
+	body := raw[1 : len(raw)-1]
+	var b strings.Builder
+	b.Grow(len(body))
+	for i := 0; i < len(body); i++ {
+		if body[i] == '\\' && i+1 < len(body) && body[i+1] == quote {
+			b.WriteByte(quote)
+			i++
+			continue
+		}
+		b.WriteByte(body[i])
+	}
+	return b.String()
+}
 
 func isLetter(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
-}
-
-func isIdentStart(b byte) bool {
-	return b == '_' || b == '@' || isLetter(b)
-}
-
-func isIdentPart(b byte) bool {
-	return isIdentStart(b) || isDigit(b) || b == '.' || b == ':'
 }
