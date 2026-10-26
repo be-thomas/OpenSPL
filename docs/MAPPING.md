@@ -158,10 +158,13 @@ mapping: OpenSPL falls back to `default_index` and warns with
 `tstats-datamodel`. Map every data model you search to avoid that fallback.
 
 Data-model field references keep their dataset prefix — `Processes.dest` — in
-the IR. The ES\|QL emitter strips the prefix to `dest` and then applies
-`fields`, so one mapping serves both data-model and plain searches. Stripping
-is lossy in general (a leaf name can collide across datasets), so it always
-carries a `tstats-field-prefix` warning.
+the IR. The ES\|QL emitter drops a prefix that is the data model name or its
+root dataset, then applies `fields`, so one mapping serves both data-model and
+plain searches. Another dotted name such as `source.address` is a column, not a
+data-model reference, and is left alone. Dropping a prefix is lossy in general
+(a leaf name can collide across datasets), so it always carries a
+`tstats-field-prefix` warning, including when the first prefixed field appears
+in a later stage.
 
 ## Prometheus labels
 

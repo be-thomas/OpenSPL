@@ -12,9 +12,11 @@ All notable changes to this project are documented here. The format follows
   resolved to an Elasticsearch index through a new `datamodels` mapping key
   (`--index` first, then an `index=` filter in `WHERE`, then
   `datamodels[<name>]`, then `default_index`), and its aggregation becomes an
-  ES\|QL `STATS`. Data-model field references (`Processes.dest`) are lowered to
-  their leaf name and then through `fields`; the prefix is always dropped with a
-  `tstats-field-prefix` warning, and an unmapped data model falls back with
+  ES\|QL `STATS`. Data-model field references (`Processes.dest`) lose the data
+  model name or root-dataset prefix and then run through `fields`; the prefix is
+  dropped with a `tstats-field-prefix` warning wherever it first appears, while
+  other dotted names such as `source.address` are left alone. An unmapped data
+  model falls back with
   `tstats-datamodel`. `span=` with `_time` becomes `BUCKET(@timestamp, N unit)`
   and is ignored elsewhere with `tstats-span`. `summariesonly`,
   `allow_old_summaries`, and `prestats` are accepted and ignored with a

@@ -139,15 +139,20 @@ an ordinary search plus an aggregation.
 | Source index | `--index` override, else `index=` inside `WHERE`, else `datamodels[<name>]`, else `default_index` |
 | `count` without parentheses | `COUNT(*)`, exactly like `stats` |
 | `_time` in `BY` | `@timestamp`, or `BUCKET(@timestamp, N unit)` with `span=` |
-| Data-model field (`Processes.dest`) | Leaf name (`dest`), then the mapping's `fields` dictionary |
+| Data-model field (`Processes.dest`) | The model name or root dataset (`Processes`) is dropped, then the mapping's `fields` dictionary runs |
+| Other dotted names (`source.address`) | Left alone: they are columns, not data-model references |
 | Acceleration options | `summariesonly`, `allow_old_summaries`, `prestats` are ignored with a `tstats-option` info |
 | `fillnull_value` | `null` and unset are accepted; any other value is refused |
 | `earliest` / `latest` | Lifted into the `WHERE` clause like a search stage |
 
 Field-prefix stripping always warns (`tstats-field-prefix`), because
 `Processes.dest` and a bare `dest` are not guaranteed to be the same column
-after the mapping. An unmapped data model falls back to the default index and
-warns (`tstats-datamodel`); map it under `datamodels` to avoid that.
+after the mapping. Only a name that starts with the data model name or its root
+dataset is treated as a data-model reference; `source.address` and `host.name`
+are column names and pass through unchanged. A prefixed field first used in a
+later stage (`tstats … | table Web.src`) is resolved the same way and warns
+too. An unmapped data model falls back to the default index and warns
+(`tstats-datamodel`); map it under `datamodels` to avoid that.
 
 A `span=` with no `_time` in the `BY` list is ignored with `tstats-span`, since
 nothing is bucketed. PromQL refuses `tstats` with `promql-unsupported-stage`.
