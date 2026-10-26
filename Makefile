@@ -7,7 +7,7 @@ LDFLAGS  := -s -w \
 	-X github.com/be-thomas/openspl/pkg/version.Commit=$(COMMIT) \
 	-X github.com/be-thomas/openspl/pkg/version.Date=$(DATE)
 
-.PHONY: all build test race vet fmt fmt-check check hooks generate generate-check conformance conformance-update e2e clean help
+.PHONY: all build test race vet fmt fmt-check check hooks generate generate-check conformance conformance-update corpus-update e2e clean help
 
 all: check
 
@@ -65,6 +65,9 @@ conformance:
 conformance-update:
 	go test ./conformance -count=1 -update
 
+corpus-update:
+	go test ./conformance -count=1 -run TestCorpus -update-corpus
+
 e2e:
 	./conformance/engines/run.sh
 
@@ -86,5 +89,6 @@ help:
 		'generate-check  fail if committed parsers differ from the grammars' \
 		'conformance  run the offline conformance suite' \
 		'conformance-update  regenerate goldens and expectations' \
+		'corpus-update  re-record the documented-query corpus outcomes' \
 		'e2e        run the Docker engine harness' \
 		'clean      remove build output'

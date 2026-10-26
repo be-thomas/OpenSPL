@@ -34,6 +34,15 @@ listed here with their versions and licenses.
 | Upstream | <https://www.antlr.org/> |
 | Role | Build-time only. Generates the Go parser sources committed under `pkg/parser/*/gen`. Never shipped, and not needed to build OpenSPL. |
 
+## Splunk documentation examples
+
+| Field | Value |
+|---|---|
+| Source | Splunk Enterprise search reference and Splunk Cloud Platform SPL2 search reference |
+| Upstream | <https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference>, <https://help.splunk.com/en/splunk-cloud-platform/search/spl2-search-reference> |
+| Role | Test data only. `conformance/corpus` reproduces the documentation's short example queries as parser-coverage inputs. No prose is included, nothing is linked into the binary, and the gatherer records each query's page and documentation versions. |
+| Terms | The example queries remain Splunk's material and are not covered by OpenSPL's license. |
+
 ## Generated code
 
 The Go files under `pkg/parser/spl1/gen` and `pkg/parser/spl2/gen` are produced

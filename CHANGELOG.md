@@ -22,6 +22,15 @@ All notable changes to this project are documented here. The format follows
   SPL.
 - Fuzz targets `FuzzParseSPL1` and `FuzzParseSPL2`, and a lexer-parity test
   that tokenizes one corpus with both generated lexers.
+- A documented-query corpus under `conformance/corpus/`: the example queries
+  from the SPL and SPL2 search references, gathered across Splunk Enterprise
+  documentation versions (9.0 through 10.0) and from the current SPL2
+  reference. `metadata.json` records the dialect and the versions each query
+  appeared in, because a query file does not say which release it belongs to.
+  `TestCorpus` requires every query to parse or be refused with a positioned
+  diagnostic, records each outcome so behaviour changes are reviewable, and
+  fails when an implemented command has no corpus coverage.
+  `scripts/gather-corpus.py` refreshes the corpus and is never run by tests.
 
 ### Changed
 

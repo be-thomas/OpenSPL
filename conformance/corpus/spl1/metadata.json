@@ -1,0 +1,26 @@
+{
+  "corpus_format": 1,
+  "dialect": "spl1",
+  "source": "Splunk Enterprise search reference, documented examples",
+  "base_url": "https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference",
+  "versions": [
+    "9.0",
+    "9.1",
+    "9.2",
+    "9.3",
+    "9.4",
+    "10.0"
+  ],
+  "retrieved": "2026-10-26",
+  "queries": 505,
+  "queries_per_version": {
+    "9.0": 464,
+    "9.1": 465,
+    "9.2": 483,
+    "9.3": 485,
+    "9.4": 497,
+    "10.0": 498
+  },
+  "gatherer": "scripts/gather-corpus.py",
+  "note": "Queries are the documentation's own example blocks, stored as syntax coverage. The version is metadata, never inferred from the query text."
+}

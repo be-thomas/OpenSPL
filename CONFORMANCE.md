@@ -18,6 +18,9 @@ conformance/
 │   ├── promql/                PromQL-specific output and refusals
 │   ├── spl2/                  SPL2 subset (`spl_version: 2`)
 │   └── errors/                parser and unsupported-construct refusals
+├── corpus/                    documented example queries, one collection per
+│   ├── spl1/                  dialect, with the Splunk versions as metadata
+│   └── spl2/
 ├── fixtures/
 │   ├── mappings/              mapping files referenced by case metadata
 │   └── data/                  NDJSON seed data for the engines
@@ -123,6 +126,36 @@ interleaved failure, and `-parallel N` to raise or lower the bound.
 ```sh
 go test ./conformance -parallel 1 -v
 ```
+
+## Documented-query corpus
+
+`corpus/` holds the example queries from the Splunk SPL and SPL2 search
+references, gathered across documentation versions. It is not a second
+compatibility contract: `cases/` is what OpenSPL promises to emit, while the
+corpus is the broad input the parser has to survive.
+
+`TestCorpus` runs with the offline suite and asserts three things:
+
+- **Robustness.** Every query parses, or is refused with a positioned
+  diagnostic. A panic, an error that is not a `*diag.Error`, or a position
+  outside the input fails, whatever the query says.
+- **Stability.** The outcome (`accepted`, or `error:<code>`) matches the
+  recorded baseline in `queries.jsonl`, so a behaviour change on documented
+  syntax appears as a reviewable diff. Re-record it with `make corpus-update`
+  and read the diff before committing.
+- **Coverage.** Every implemented command appears at the start of at least one
+  stage in its collection. A command with no corpus query is a command nothing
+  tests.
+
+The dialect and the documentation versions live in each collection's
+`metadata.json`, and each query lists the versions that contain it. Nothing is
+inferred from the query text: `from` is the only textual hint, and classic SPL
+and SPL2 both use it.
+
+`scripts/gather-corpus.py` refreshes the corpus from the documentation. It
+needs network access, so neither the tests nor CI run it. See
+[conformance/corpus/README.md](conformance/corpus/README.md) for the format,
+the cache, and the provenance.
 
 ## Engine cases
 

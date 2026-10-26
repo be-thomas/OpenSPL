@@ -15,6 +15,9 @@ rules.md
 coverage.out
 coverage.html
 
+# Python bytecode from scripts/
+__pycache__/
+
 # Editor and OS noise
 .DS_Store
 .idea/
