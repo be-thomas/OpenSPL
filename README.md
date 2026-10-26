@@ -221,9 +221,14 @@ override.
 84 of 2,812 queries (3.0%) parse to the IR, 65 (2.3%) compile end-to-end to
 ES\|QL, and 6 (0.2%) to PromQL. The low SPL1 detection figure is parser
 coverage, not emitter coverage — `tstats` alone accounts for 1,022 of the
-refusals. Where a query does parse, ES\|QL emits for 77.4% and PromQL for 7.1%;
-most PromQL refusals are deliberate, because `eval`, `rex`, `table`, `fields`,
-and `bin` have no honest PromQL mapping.
+refusals. Where a query does parse, ES\|QL emits for 77.4% and PromQL for 7.1%.
+
+The 78 PromQL refusals are deliberate. The largest single cause is
+`promql-no-aggregation` (21): the pipeline does not end in an aggregation, so
+it produces rows rather than a time series. Another 33 use a stage with no
+PromQL form — `eval` 17, `table` 9, `rex` 5, `fields` 2 — and 16 combine or
+name an aggregation PromQL cannot express. The remaining 8 are refused over
+row filters, free-text terms, or ordering.
 
 Regenerate with `make corpus-report`; it prints this table from the corpus.
 

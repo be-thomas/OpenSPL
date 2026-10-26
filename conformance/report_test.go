@@ -41,7 +41,26 @@ func (r *reportTally) add(other reportTally) {
 
 type reportRow struct {
 	name  string
+	total bool
 	tally reportTally
+}
+
+// label is the first cell: a code-formatted collection name, or the bold
+// total row.
+func (r reportRow) label() string {
+	if r.total {
+		return "**Total**"
+	}
+	return "`" + r.name + "`"
+}
+
+// cell formats one count or percentage, bold on the total row. The printed
+// table is meant to be pasted into README.md unchanged.
+func (r reportRow) cell(s string) string {
+	if r.total {
+		return "**" + s + "**"
+	}
+	return s
 }
 
 func TestCorpusReport(t *testing.T) {
@@ -56,18 +75,20 @@ func TestCorpusReport(t *testing.T) {
 		rows = append(rows, reportRow{name: filepath.Base(dir), tally: got})
 		total.add(got)
 	}
-	rows = append(rows, reportRow{name: "**Total**", tally: total})
+	rows = append(rows, reportRow{name: "Total", total: true, tally: total})
 
 	fmt.Println("| Collection | Queries | → IR | SPL→IR | → ES\\|QL | SPL→ES\\|QL | IR→ES\\|QL | → PromQL | SPL→PromQL | IR→PromQL |")
 	fmt.Println("|---|---|---|---|---|---|---|---|---|---|")
 	for _, row := range rows {
 		t := row.tally
 		fmt.Printf("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-			row.name, count(t.queries), count(t.parsed),
-			percent(t.parsed, t.queries),
-			count(t.esql), percent(t.esql, t.queries), percent(t.esql, t.parsed),
-			count(t.promql), percent(t.promql, t.queries),
-			percent(t.promql, t.parsed))
+			row.label(),
+			row.cell(count(t.queries)), row.cell(count(t.parsed)),
+			row.cell(percent(t.parsed, t.queries)),
+			row.cell(count(t.esql)), row.cell(percent(t.esql, t.queries)),
+			row.cell(percent(t.esql, t.parsed)),
+			row.cell(count(t.promql)), row.cell(percent(t.promql, t.queries)),
+			row.cell(percent(t.promql, t.parsed)))
 	}
 }
 
