@@ -24,6 +24,7 @@ var spl1Implemented = map[string]bool{
 	"head":      true,
 	"bin":       true,
 	"rename":    true,
+	"tstats":    true,
 }
 
 // spl1Known are real classic SPL commands that SPL1 does not implement yet.
@@ -60,7 +61,7 @@ var spl1Known = map[string]bool{
 	"stats": true, "strcat": true, "streamstats": true, "table": true,
 	"tags": true, "tail": true, "timechart": true, "tojson": true,
 	"top": true, "transaction": true, "transpose": true, "trendline": true,
-	"tscollect": true, "tstats": true, "typeahead": true, "typer": true,
+	"tscollect": true, "typeahead": true, "typer": true,
 	"union": true, "uniq": true, "untable": true, "walklex": true,
 	"where": true, "x11": true, "xmlkv": true, "xmlunescape": true,
 	"xpath": true,

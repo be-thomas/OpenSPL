@@ -63,6 +63,36 @@ type TimechartStage struct {
 func (*TimechartStage) StageName() string { return "timechart" }
 func (s *TimechartStage) Position() Pos   { return s.Pos }
 
+// TstatsStage is a data-model aggregation. It is Splunk's accelerated
+// equivalent of `stats` over a data model, and the IR keeps the data model,
+// the acceleration options, and the span separate from a plain stats stage so
+// an emitter can decide how to resolve them.
+type TstatsStage struct {
+	Datamodel    string         `json:"datamodel,omitempty"`
+	DatamodelPos Pos            `json:"datamodel_pos"`
+	Options      []TstatsOption `json:"options,omitempty"`
+	Aggs         []Aggregate    `json:"aggs"`
+	Where        Expr           `json:"where,omitempty"`
+	Earliest     string         `json:"earliest,omitempty"`
+	Latest       string         `json:"latest,omitempty"`
+	By           []Expr         `json:"by,omitempty"`
+	Span         string         `json:"span,omitempty"`
+	SpanPos      Pos            `json:"span_pos"`
+	Pos          Pos            `json:"pos"`
+}
+
+func (*TstatsStage) StageName() string { return "tstats" }
+func (s *TstatsStage) Position() Pos   { return s.Pos }
+
+// TstatsOption is one `name=value` pair before the aggregations. Splunk spells
+// every option name and value as an unquoted word; the builder lowercases the
+// name and decodes a quoted value.
+type TstatsOption struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Pos   Pos    `json:"pos"`
+}
+
 // Aggregate is one aggregation expression, optionally aliased.
 type Aggregate struct {
 	Func  string `json:"func"`

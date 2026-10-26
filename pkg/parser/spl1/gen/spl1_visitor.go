@@ -52,6 +52,9 @@ type SPL1Visitor interface {
 	// Visit a parse tree produced by SPL1Parser#CmdRename.
 	VisitCmdRename(ctx *CmdRenameContext) interface{}
 
+	// Visit a parse tree produced by SPL1Parser#CmdTstats.
+	VisitCmdTstats(ctx *CmdTstatsContext) interface{}
+
 	// Visit a parse tree produced by SPL1Parser#searchExpr.
 	VisitSearchExpr(ctx *SearchExprContext) interface{}
 
@@ -273,6 +276,39 @@ type SPL1Visitor interface {
 
 	// Visit a parse tree produced by SPL1Parser#byClause.
 	VisitByClause(ctx *ByClauseContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsBody.
+	VisitTstatsBody(ctx *TstatsBodyContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsAggList.
+	VisitTstatsAggList(ctx *TstatsAggListContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsAgg.
+	VisitTstatsAgg(ctx *TstatsAggContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsAggWord.
+	VisitTstatsAggWord(ctx *TstatsAggWordContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsOption.
+	VisitTstatsOption(ctx *TstatsOptionContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsOptionValue.
+	VisitTstatsOptionValue(ctx *TstatsOptionValueContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsFrom.
+	VisitTstatsFrom(ctx *TstatsFromContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsDatamodel.
+	VisitTstatsDatamodel(ctx *TstatsDatamodelContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsWhere.
+	VisitTstatsWhere(ctx *TstatsWhereContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsBy.
+	VisitTstatsBy(ctx *TstatsByContext) interface{}
+
+	// Visit a parse tree produced by SPL1Parser#tstatsByItem.
+	VisitTstatsByItem(ctx *TstatsByItemContext) interface{}
 
 	// Visit a parse tree produced by SPL1Parser#TcSpanFirst.
 	VisitTcSpanFirst(ctx *TcSpanFirstContext) interface{}

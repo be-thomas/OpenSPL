@@ -55,9 +55,9 @@ func (p *SPL1Parser) isIdentLike(t int) bool {
 	case SPL1ParserIDENT, SPL1ParserSEARCH, SPL1ParserWHERE, SPL1ParserSTATS,
 		SPL1ParserTIMECHART, SPL1ParserEVAL, SPL1ParserREX, SPL1ParserTABLE,
 		SPL1ParserFIELDS, SPL1ParserSORT, SPL1ParserHEAD, SPL1ParserBIN,
-		SPL1ParserRENAME, SPL1ParserBY, SPL1ParserAS, SPL1ParserSPAN,
-		SPL1ParserLIMIT, SPL1ParserFIELD, SPL1ParserAND, SPL1ParserOR,
-		SPL1ParserNOT, SPL1ParserNOT_WORD:
+		SPL1ParserRENAME, SPL1ParserTSTATS, SPL1ParserFROM, SPL1ParserBY,
+		SPL1ParserAS, SPL1ParserSPAN, SPL1ParserLIMIT, SPL1ParserFIELD,
+		SPL1ParserAND, SPL1ParserOR, SPL1ParserNOT, SPL1ParserNOT_WORD:
 		return true
 	}
 	return false
@@ -283,6 +283,7 @@ command
   | HEAD limitArg?                          #CmdHead
   | BIN binItem*                            #CmdBin
   | RENAME renamePair (COMMA renamePair | renamePair)*  #CmdRename
+  | TSTATS tstatsBody                       #CmdTstats
   ;
 
 // Every operator rule below is gated on its own token type. Without the gate,
@@ -527,8 +528,8 @@ sign : minus | PLUS ;
 
 identLike
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | LIMIT | FIELD | AND | OR
-  | NOT | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | TSTATS | FROM | BY | AS | SPAN | LIMIT | FIELD
+  | AND | OR | NOT | NOT_WORD
   ;
 
 // exprWord is identLike where a bare `not` cannot start an expression: there
@@ -536,8 +537,8 @@ identLike
 // follows an operator as NOT_WORD so it stays available as a field name.
 exprWord
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | LIMIT | FIELD | AND | OR
-  | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | TSTATS | FROM | BY | AS | SPAN | LIMIT | FIELD
+  | AND | OR | NOT_WORD
   ;
 
 aggList
@@ -564,6 +565,70 @@ aliasClause
 
 byClause
   : BY fieldExprList
+  ;
+
+// --- tstats --------------------------------------------------------------
+//
+// `tstats` aggregates data-model fields. Its options precede the aggregations,
+// the aggregations are whitespace separated (an optional comma is accepted),
+// and the FROM, WHERE, and BY clauses keep that order. A `span=` item inside BY
+// applies to `_time`.
+
+tstatsBody
+  : tstatsOption* tstatsAggList tstatsFrom? tstatsWhere? tstatsBy?
+  ;
+
+// FROM, WHERE, and BY start clauses here, so they cannot start an aggregation:
+// `tstats count by host` is one aggregation and a BY clause. Excluding the
+// three from tstatsAggWord keeps that choice inside the grammar, where SLL
+// prediction can make it from the token type alone.
+tstatsAggList
+  : tstatsAgg (COMMA? tstatsAgg)*
+  ;
+
+tstatsAgg
+  : tstatsAggWord (LPAREN valueExpr? RPAREN)? aliasClause?
+  ;
+
+tstatsAggWord
+  : IDENT | SEARCH | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS | SORT
+  | HEAD | BIN | RENAME | TSTATS | AS | SPAN | LIMIT | FIELD | AND | OR | NOT
+  | NOT_WORD
+  ;
+
+tstatsOption
+  : identLike EQ tstatsOptionValue
+  ;
+
+// Option values are unquoted words, numbers, durations, or quoted strings:
+// `summariesonly=false`, `prestats=t`, `fillnull_value="n/a"`.
+tstatsOptionValue
+  : identLike
+  | number
+  | DURATION
+  | STRING
+  ;
+
+tstatsFrom
+  : FROM tstatsDatamodel EQ identLike
+  ;
+
+// The clause name is parsed as an identifier so a misspelling is refused by
+// the builder at that word, naming `datamodel` as the expected spelling.
+tstatsDatamodel
+  : identLike
+  ;
+
+tstatsWhere
+  : WHERE searchExpr
+  ;
+
+tstatsBy
+  : BY tstatsByItem (COMMA? tstatsByItem)*
+  ;
+
+tstatsByItem
+  : fieldExpr (SPAN spanAssign)?
   ;
 
 timechartBody
@@ -687,14 +752,15 @@ binField
 // `span` excluded: `bin span` starts a span assignment, never a field.
 identLikeNotSpan
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | RENAME | BY | AS | LIMIT | FIELD | AND | OR | NOT
+  | SORT | HEAD | BIN | RENAME | TSTATS | FROM | BY | AS | LIMIT | FIELD
+  | AND | OR | NOT
   ;
 
 // `limit` excluded: `sort limit` starts the limit argument, never a field.
 identLikeNotLimit
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | RENAME | BY | AS | SPAN | FIELD | AND | OR | NOT
-  | NOT_WORD
+  | SORT | HEAD | BIN | RENAME | TSTATS | FROM | BY | AS | SPAN | FIELD
+  | AND | OR | NOT | NOT_WORD
   ;
 
 // --- lexer ---------------------------------------------------------------
@@ -713,6 +779,8 @@ SORT      : [sS][oO][rR][tT] ;
 HEAD      : [hH][eE][aA][dD] ;
 BIN       : [bB][iI][nN] ;
 RENAME    : [rR][eE][nN][aA][mM][eE] ;
+TSTATS    : [tT][sS][tT][aA][tT][sS] ;
+FROM      : [fF][rR][oO][mM] ;
 BY        : [bB][yY] ;
 AS        : [aA][sS] ;
 SPAN      : [sS][pP][aA][nN] ;
