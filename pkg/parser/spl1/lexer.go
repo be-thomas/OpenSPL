@@ -231,8 +231,9 @@ func convertToken(m *antlrpos.SourceMap, t antlr.Token) (Token, error) {
 		spl1gen.SPL1ParserSEARCH, spl1gen.SPL1ParserWHERE, spl1gen.SPL1ParserSTATS,
 		spl1gen.SPL1ParserTIMECHART, spl1gen.SPL1ParserEVAL, spl1gen.SPL1ParserREX,
 		spl1gen.SPL1ParserTABLE, spl1gen.SPL1ParserFIELDS, spl1gen.SPL1ParserSORT,
-		spl1gen.SPL1ParserHEAD, spl1gen.SPL1ParserBIN, spl1gen.SPL1ParserBY,
-		spl1gen.SPL1ParserAS, spl1gen.SPL1ParserSPAN, spl1gen.SPL1ParserLIMIT,
+		spl1gen.SPL1ParserHEAD, spl1gen.SPL1ParserBIN, spl1gen.SPL1ParserRENAME,
+		spl1gen.SPL1ParserBY, spl1gen.SPL1ParserAS, spl1gen.SPL1ParserSPAN,
+		spl1gen.SPL1ParserLIMIT,
 		spl1gen.SPL1ParserFIELD, spl1gen.SPL1ParserAND, spl1gen.SPL1ParserOR,
 		spl1gen.SPL1ParserNOT:
 		return Token{Kind: Ident, Text: t.GetText(), Pos: pos}, nil

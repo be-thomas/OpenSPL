@@ -14,6 +14,7 @@ conformance/
 │   ├── eval/                  expression lowering
 │   ├── rex/                   extraction lowering
 │   ├── shaping/               table, fields, sort, head
+│   ├── rename/                renaming fields, and the refusals
 │   ├── mapping/               custom field and index mappings
 │   ├── promql/                PromQL-specific output and refusals
 │   ├── spl2/                  SPL2 subset (`spl_version: 2`)

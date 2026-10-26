@@ -48,6 +48,7 @@ emission, and PromQL `job` matchers behave exactly as for classic SPL.
 | `sort` | ✅ | ✅ | ⚠️ ordering only after an aggregation |
 | `head` | ✅ | ✅ | ⚠️ only with `sort` |
 | `bin` | ✅ | ⚠️ derived column | ⛔ |
+| `rename` | ✅ | ✅ one `RENAME`; ⛔ wildcards and interacting pairs | ⛔ |
 
 ## Expressions
 
@@ -138,7 +139,7 @@ Recognized but not implemented in v0.1 (classic SPL; in SPL2, `from` is the star
 `mcollect`, `metadata`, `metasearch`, `ml`, `mstats`, `multikmeans`,
 `multisearch`, `mvcombine`, `mvexpand`, `nomv`, `outlier`, `outputcsv`,
 `outputlookup`, `outputtext`, `pivot`, `predict`, `rangemap`, `rare`, `regex`,
-`reltime`, `rename`, `replace`, `rest`, `return`, `reverse`, `script`, `scrub`,
+`reltime`, `replace`, `rest`, `return`, `reverse`, `script`, `scrub`,
 `select`, `selfjoin`, `sendemail`, `set`, `setfields`, `spath`, `strcat`,
 `streamstats`, `tags`, `tail`, `top`, `transaction`, `transpose`, `trendline`,
 `tscollect`, `tstats`, `typeahead`, `typer`, `union`, `uniq`, `untable`, `x11`,
@@ -178,6 +179,10 @@ They return `unsupported-command` with the command's source position.
 | `unsupported-agg` | error | No ES\|QL mapping |
 | `invalid-group-by` | error | Group key is not a field |
 | `rex-no-captures` | error | Pattern has no named capture |
+| `rename-wildcard` | error | `rename` wildcard has no ES\|QL form |
+| `rename-duplicate` | error | One field is renamed twice in a command |
+| `rename-conflict` | error | Pairs would interact: a target is another source, or two pairs share a target |
+| `rename-source-dropped` | error | A later stage references a name that `rename` moved to a new name |
 | `unsupported-stage` | error | No emitter for the IR node |
 
 ### PromQL emitter

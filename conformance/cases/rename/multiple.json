@@ -1,0 +1,12 @@
+{
+  "description": "every pair of one Splunk rename becomes one pair of a single ES|QL RENAME, so the pairs apply together",
+  "targets": {
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

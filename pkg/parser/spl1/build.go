@@ -206,6 +206,18 @@ func (b *builder) commandBody(ctx spl1gen.ICommandContext) (ast.Stage, error) {
 
 	case *spl1gen.CmdBinContext:
 		return b.bin(c.GetStart(), c.AllBinItem())
+
+	case *spl1gen.CmdRenameContext:
+		renames := make([]ast.Rename, 0, len(c.AllRenamePair()))
+		for _, pair := range c.AllRenamePair() {
+			from, fromPos := b.renameField(pair.RenameField(0))
+			to, toPos := b.renameField(pair.RenameField(1))
+			renames = append(renames, ast.Rename{
+				From: from, FromPos: fromPos,
+				To: to, ToPos: toPos,
+			})
+		}
+		return &ast.RenameStage{Renames: renames, Pos: b.pos(c.GetStart())}, nil
 	}
 	return nil, diag.NewError(ast.Pos{Line: 1, Col: 1}, "syntax", "unrecognized command")
 }
@@ -437,6 +449,17 @@ func (b *builder) bin(cmd antlr.Token, items []spl1gen.IBinItemContext) (ast.Sta
 		return nil, diag.NewError(b.pos(cmd), "syntax", "bin requires span=<duration>")
 	}
 	return &ast.BinStage{Field: field, Span: span, Pos: b.pos(cmd)}, nil
+}
+
+// renameField returns a rename field's name and the position of its first
+// token. A quoted name keeps its decoded text and may contain spaces; an
+// identifier keeps its raw spelling, including a tight trailing wildcard.
+func (b *builder) renameField(ctx spl1gen.IRenameFieldContext) (string, ast.Pos) {
+	if s := ctx.STRING(); s != nil {
+		tok := s.GetSymbol()
+		return decodeString(tok.GetText()), b.pos(tok)
+	}
+	return b.text(ctx), b.pos(ctx.GetStart())
 }
 
 // --- search expressions: comparison RHS words are literal values ----------

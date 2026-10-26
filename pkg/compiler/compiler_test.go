@@ -125,6 +125,66 @@ func TestESQLGolden(t *testing.T) {
 			src:  `index=web host=*-* status=200-299`,
 			want: "FROM web\n| WHERE `host.name` LIKE \"*-*\" AND status == \"200-299\"",
 		},
+		{
+			name: "rename maps the source name",
+			src:  `index=web | rename host as dest`,
+			want: "FROM web\n| RENAME `host.name` AS dest",
+		},
+		{
+			name: "rename leaves the target name as written",
+			src:  `index=web | rename dest as host`,
+			want: "FROM web\n| RENAME dest AS host",
+		},
+		{
+			name: "rename resolves the new name downstream",
+			src:  `index=web | rename dest as host | stats count by host`,
+			want: "FROM web\n| RENAME dest AS host\n| STATS count = COUNT(*) BY host",
+		},
+		{
+			name: "rename chains across two stages",
+			src:  `index=web | rename a as b | rename b as c | table c`,
+			want: "FROM web\n| RENAME a AS b\n| RENAME b AS c\n| KEEP c",
+		},
+		{
+			name: "rename can restore a name it renamed away",
+			src:  `index=web | rename a as b | rename b as a | table a`,
+			want: "FROM web\n| RENAME a AS b\n| RENAME b AS a\n| KEEP a",
+		},
+		{
+			name: "rename skips a no-op pair beside a real one",
+			src:  `index=web | rename a as b, a as a`,
+			want: "FROM web\n| RENAME a AS b",
+		},
+		{
+			name: "rename skips a no-op target beside a real pair",
+			src:  `index=web | rename a as b, b as b`,
+			want: "FROM web\n| RENAME a AS b",
+		},
+		{
+			name: "rename quotes a keyword used as a field",
+			src:  `index=web | rename where as search`,
+			want: "FROM web\n| RENAME `where` AS search",
+		},
+		{
+			name: "keyword fields are quoted in every command",
+			src:  `index=web | table stats, where`,
+			want: "FROM web\n| KEEP `stats`, `where`",
+		},
+		{
+			name: "rename applies every pair in one command",
+			src:  `index=web | rename host as dest, source as src_ip`,
+			want: "FROM web\n| RENAME `host.name` AS dest, `log.file.path` AS src_ip",
+		},
+		{
+			name: "rename keeps a quoted name as the target",
+			src:  `index=web | rename "user agent" as ua`,
+			want: "FROM web\n| RENAME `user agent` AS ua",
+		},
+		{
+			name: "rename to the same name emits nothing",
+			src:  `index=web | rename a as a`,
+			want: "FROM web",
+		},
 	}
 
 	for _, tc := range tests {
@@ -183,6 +243,90 @@ func TestESQLDiagnostics(t *testing.T) {
 			t.Fatalf("error = %v", err)
 		}
 	})
+}
+
+// TestRenameRefusals pins the rename refusals at their exact source positions.
+// A refusal must name the field that caused it, and no partial output may be
+// returned.
+func TestRenameRefusals(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		code string
+		line int
+		col  int
+	}{
+		{
+			name: "wildcard source",
+			src:  `index=web | rename EU* as EMEA*`,
+			code: "rename-wildcard", line: 1, col: 20,
+		},
+		{
+			name: "wildcard target",
+			src:  `index=web | rename a as EMEA*`,
+			code: "rename-wildcard", line: 1, col: 25,
+		},
+		{
+			name: "bare wildcard target",
+			src:  `index=web | rename user_name as *`,
+			code: "rename-wildcard", line: 1, col: 33,
+		},
+		{
+			name: "leading wildcard source",
+			src:  `index=web | rename *foo as bar`,
+			code: "rename-wildcard", line: 1, col: 20,
+		},
+		{
+			name: "prefix wildcard pair",
+			src:  `index=web | rename properties.* as *`,
+			code: "rename-wildcard", line: 1, col: 20,
+		},
+		{
+			name: "field renamed twice",
+			src:  `index=web | rename a as b, a as c`,
+			code: "rename-duplicate", line: 1, col: 28,
+		},
+		{
+			name: "target is another source",
+			src:  `index=web | rename a as b, b as c`,
+			code: "rename-conflict", line: 1, col: 25,
+		},
+		{
+			name: "two pairs share one target",
+			src:  `index=web | rename a as b, c as b`,
+			code: "rename-conflict", line: 1, col: 33,
+		},
+		{
+			name: "later stage references the renamed-away name",
+			src:  `index=web | rename host as dest | stats count by host`,
+			code: "rename-source-dropped", line: 1, col: 50,
+		},
+		{
+			name: "later filter references the renamed-away name",
+			src:  `index=web | rename a as b | where a=1`,
+			code: "rename-source-dropped", line: 1, col: 35,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, _, err := Compile(tc.src, ESQL, Options{})
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != tc.code || d.Pos.Line != tc.line || d.Pos.Col != tc.col {
+				t.Fatalf("diagnostic = %s at %d:%d, want %s at %d:%d",
+					d.Code, d.Pos.Line, d.Pos.Col, tc.code, tc.line, tc.col)
+			}
+			if res != nil && res.Output != "" {
+				t.Fatalf("refused query produced output: %q", res.Output)
+			}
+		})
+	}
 }
 
 func TestESQLIndexFilters(t *testing.T) {

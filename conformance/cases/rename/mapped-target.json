@@ -1,0 +1,12 @@
+{
+  "description": "the target of a rename is the name the query chooses, so it is emitted as written and later stages resolve it to that same column rather than through the field mapping",
+  "targets": {
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

@@ -154,6 +154,25 @@ type BinStage struct {
 func (*BinStage) StageName() string { return "bin" }
 func (s *BinStage) Position() Pos   { return s.Pos }
 
+// RenameStage renames one or more fields. Splunk applies every pair in a
+// single command, so the pairs travel together rather than as separate stages.
+type RenameStage struct {
+	Renames []Rename `json:"renames"`
+	Pos     Pos      `json:"pos"`
+}
+
+func (*RenameStage) StageName() string { return "rename" }
+func (s *RenameStage) Position() Pos   { return s.Pos }
+
+// Rename is one `from AS to` pair. The two positions point at the field
+// tokens, so a refusal can name the field that caused it.
+type Rename struct {
+	From    string `json:"from"`
+	FromPos Pos    `json:"from_pos"`
+	To      string `json:"to"`
+	ToPos   Pos    `json:"to_pos"`
+}
+
 // Expr is a scalar expression in the IR.
 type Expr interface {
 	exprNode()

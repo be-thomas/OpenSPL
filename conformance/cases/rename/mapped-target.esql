@@ -1,0 +1,3 @@
+FROM web
+| RENAME dest AS host
+| STATS count = COUNT(*) BY host

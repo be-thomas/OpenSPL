@@ -1,0 +1,19 @@
+{
+  "description": "renaming one field twice is refused at the second source; Splunk rejects the same query",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "rename-duplicate",
+        "line": 1,
+        "col": 28
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

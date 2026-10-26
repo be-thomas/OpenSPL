@@ -1,0 +1,19 @@
+{
+  "description": "a bare wildcard target is valid Splunk (strip the matched prefix) but has no ES|QL form, so it is refused at the target",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "rename-wildcard",
+        "line": 1,
+        "col": 33
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

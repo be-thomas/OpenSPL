@@ -33,6 +33,7 @@ func TestParseStageKinds(t *testing.T) {
 		{"fields exclude", `index=web | fields - _raw`, []string{"search", "fields"}},
 		{"sort and head", `index=web | sort limit=10 -bytes | head 5`, []string{"search", "sort", "head"}},
 		{"bin", `index=web | bin span=1h _time`, []string{"search", "bin"}},
+		{"rename", `index=web | rename host as dest`, []string{"search", "rename"}},
 		{"leading pipe", `| stats count`, []string{"stats"}},
 	}
 
@@ -837,6 +838,136 @@ func TestSortSignOnAKeywordField(t *testing.T) {
 			}
 			if s.Fields[0].Name != tc.name || s.Fields[0].Desc != tc.desc {
 				t.Fatalf("field = %#v, want %s desc=%v", s.Fields[0], tc.name, tc.desc)
+			}
+		})
+	}
+}
+
+// TestRename pins the lowered rename stage: every pair keeps both field
+// spellings and both token positions, quoted names are decoded, and a tight
+// wildcard stays part of the name for the emitter to refuse.
+func TestRename(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []ast.Rename
+	}{
+		{
+			name: "one pair",
+			src:  `index=web | rename host as dest`,
+			want: []ast.Rename{{
+				From: "host", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "dest", ToPos: ast.Pos{Line: 1, Col: 28, Offset: 27},
+			}},
+		},
+		{
+			name: "two pairs",
+			src:  `index=web | rename a as b, c as d`,
+			want: []ast.Rename{
+				{From: "a", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19}, To: "b", ToPos: ast.Pos{Line: 1, Col: 25, Offset: 24}},
+				{From: "c", FromPos: ast.Pos{Line: 1, Col: 28, Offset: 27}, To: "d", ToPos: ast.Pos{Line: 1, Col: 33, Offset: 32}},
+			},
+		},
+		{
+			name: "quoted name with a space",
+			src:  `index=web | rename "user agent" as ua`,
+			want: []ast.Rename{{
+				From: "user agent", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "ua", ToPos: ast.Pos{Line: 1, Col: 36, Offset: 35},
+			}},
+		},
+		{
+			name: "tight wildcards stay in the name",
+			src:  `index=web | rename EU* as EMEA*`,
+			want: []ast.Rename{{
+				From: "EU*", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "EMEA*", ToPos: ast.Pos{Line: 1, Col: 27, Offset: 26},
+			}},
+		},
+		{
+			name: "leading wildcard",
+			src:  `index=web | rename *foo as bar`,
+			want: []ast.Rename{{
+				From: "*foo", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "bar", ToPos: ast.Pos{Line: 1, Col: 28, Offset: 27},
+			}},
+		},
+		{
+			name: "wildcard target",
+			src:  `index=web | rename properties.* as *`,
+			want: []ast.Rename{{
+				From: "properties.*", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "*", ToPos: ast.Pos{Line: 1, Col: 36, Offset: 35},
+			}},
+		},
+		{
+			name: "same name on both sides",
+			src:  `index=web | rename a as a`,
+			want: []ast.Rename{{
+				From: "a", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "a", ToPos: ast.Pos{Line: 1, Col: 25, Offset: 24},
+			}},
+		},
+		{
+			name: "keywords as field names",
+			src:  `index=web | rename where as search`,
+			want: []ast.Rename{{
+				From: "where", FromPos: ast.Pos{Line: 1, Col: 20, Offset: 19},
+				To: "search", ToPos: ast.Pos{Line: 1, Col: 29, Offset: 28},
+			}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := mustParse(t, tc.src)
+			s, ok := p.Stages[len(p.Stages)-1].(*ast.RenameStage)
+			if !ok {
+				t.Fatalf("last stage = %#v, want *ast.RenameStage", p.Stages[len(p.Stages)-1])
+			}
+			if len(s.Renames) != len(tc.want) {
+				t.Fatalf("got %d pairs, want %d", len(s.Renames), len(tc.want))
+			}
+			for i, want := range tc.want {
+				if got := s.Renames[i]; got != want {
+					t.Errorf("pair %d = %#v, want %#v", i, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestRenameErrors pins the grammar's argument errors: every malformed pair is
+// refused at parse time rather than reaching the emitter, and a wildcard must
+// touch its name so `a *` is not silently read as `a*`.
+func TestRenameErrors(t *testing.T) {
+	tests := []struct {
+		src string
+		col int
+	}{
+		{`index=web | rename`, 19},
+		{`index=web | rename a`, 21},
+		{`index=web | rename a as`, 24},
+		{`index=web | rename a as b,`, 27},
+		{`index=web | rename a as b c`, 28},
+		{`index=web | rename a as b as c`, 30},
+		{`index=web | rename a * as b`, 22},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			if ds[0].Code != "syntax" {
+				t.Fatalf("code = %q, want syntax (%v)", ds[0].Code, err)
+			}
+			if ds[0].Pos.Line != 1 || ds[0].Pos.Col != tc.col {
+				t.Fatalf("diagnostic at %d:%d, want 1:%d (%v)",
+					ds[0].Pos.Line, ds[0].Pos.Col, tc.col, ds[0].Message)
 			}
 		})
 	}

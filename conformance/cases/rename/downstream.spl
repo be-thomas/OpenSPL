@@ -1,0 +1,1 @@
+index=web | rename host as dest | stats count by dest

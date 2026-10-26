@@ -177,6 +177,7 @@ openspl transpile --strict -f savedsearch.spl
 | `sort` | ✅ | ⚠️ | `SORT`; PromQL → `sort`, `sort_desc`, `topk`, `bottomk` |
 | `head` | ✅ | ⚠️ | `LIMIT`; PromQL only after a sort |
 | `bin` | ⚠️ | ⛔ | Derived `BUCKET` column |
+| `rename` | ✅ | ⛔ | `RENAME`; wildcards are refused, not approximated |
 
 **Recognized but not implemented** — `join`, `lookup`, `transaction`, `eventstats`, `streamstats`, `dedup`, `top`, `rare`, `chart`, `append`, `multisearch`, subsearches, and more. These return `unsupported-command` with a precise position rather than a misleading parse.
 
@@ -213,22 +214,22 @@ override.
 
 | Collection | Queries | → IR | SPL→IR | → ES\|QL | SPL→ES\|QL | IR→ES\|QL | → PromQL | SPL→PromQL | IR→PromQL |
 |---|---|---|---|---|---|---|---|---|---|
-| `spl1` | 549 | 69 | 12.6% | 59 | 10.7% | 85.5% | 6 | 1.1% | 8.7% |
-| `spl1-detections` | 2,171 | 15 | 0.7% | 6 | 0.3% | 40.0% | 0 | 0.0% | 0.0% |
+| `spl1` | 549 | 71 | 12.9% | 61 | 11.1% | 85.9% | 6 | 1.1% | 8.5% |
+| `spl1-detections` | 2,171 | 24 | 1.1% | 11 | 0.5% | 45.8% | 0 | 0.0% | 0.0% |
 | `spl2` | 92 | 0 | 0.0% | 0 | 0.0% | — | 0 | 0.0% | — |
-| **Total** | **2,812** | **84** | **3.0%** | **65** | **2.3%** | **77.4%** | **6** | **0.2%** | **7.1%** |
+| **Total** | **2,812** | **95** | **3.4%** | **72** | **2.6%** | **75.8%** | **6** | **0.2%** | **6.3%** |
 
-84 of 2,812 queries (3.0%) parse to the IR, 65 (2.3%) compile end-to-end to
+95 of 2,812 queries (3.4%) parse to the IR, 72 (2.6%) compile end-to-end to
 ES\|QL, and 6 (0.2%) to PromQL. The low SPL1 detection figure is parser
 coverage, not emitter coverage — `tstats` alone accounts for 1,022 of the
-refusals. Where a query does parse, ES\|QL emits for 77.4% and PromQL for 7.1%.
+refusals. Where a query does parse, ES\|QL emits for 75.8% and PromQL for 6.3%.
 
-The 78 PromQL refusals are deliberate. The largest single cause is
+The 89 PromQL refusals are deliberate. The largest single cause is
 `promql-no-aggregation` (21): the pipeline does not end in an aggregation, so
-it produces rows rather than a time series. Another 33 use a stage with no
-PromQL form — `eval` 17, `table` 9, `rex` 5, `fields` 2 — and 16 combine or
-name an aggregation PromQL cannot express. The remaining 8 are refused over
-row filters, free-text terms, or ordering.
+it produces rows rather than a time series. Another 44 use a stage with no
+PromQL form — `eval` 18, `table` 10, `rex` 7, `rename` 6, `fields` 2, `bin` 1 —
+and 16 combine or name an aggregation PromQL cannot express. The remaining 8
+are refused over ordering, free-text terms, or row filters.
 
 Regenerate with `make corpus-report`; it prints this table from the corpus.
 

@@ -29,7 +29,7 @@ languages — not a Splunk clone, not an Elasticsearch client, and not a model.
 - [x] Unified IR (`pkg/ast`)
 - [x] Positioned diagnostics (`pkg/diag`)
 - [x] Classic SPL lexer and parser (ANTLR grammar, generated Go)
-- [x] `search`, `where`, `stats`, `timechart`, `eval`, `rex`, `table`, `fields`, `sort`, `head`, `bin`
+- [x] `search`, `where`, `stats`, `timechart`, `eval`, `rex`, `table`, `fields`, `sort`, `head`, `bin`, `rename`
 - [x] ES|QL emitter
 - [x] PromQL emitter with semantic refusal
 - [x] ECS mapping and strict JSON loading

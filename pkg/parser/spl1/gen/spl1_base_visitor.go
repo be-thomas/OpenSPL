@@ -63,6 +63,10 @@ func (v *BaseSPL1Visitor) VisitCmdBin(ctx *CmdBinContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSPL1Visitor) VisitCmdRename(ctx *CmdRenameContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSPL1Visitor) VisitSearchExpr(ctx *SearchExprContext) interface{} {
 	return v.VisitChildren(ctx)
 }
@@ -448,6 +452,14 @@ func (v *BaseSPL1Visitor) VisitBinSpanItem(ctx *BinSpanItemContext) interface{} 
 }
 
 func (v *BaseSPL1Visitor) VisitBinFieldItem(ctx *BinFieldItemContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitRenamePair(ctx *RenamePairContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitRenameField(ctx *RenameFieldContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
