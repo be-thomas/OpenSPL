@@ -18,6 +18,10 @@ conformance/
 │   ├── promql/                PromQL-specific output and refusals
 │   ├── spl2/                  SPL2 subset (`spl_version: 2`)
 │   └── errors/                parser and unsupported-construct refusals
+├── corpus/                    query collections, one directory per source
+│   ├── spl1/                  documented, with the Splunk versions as metadata
+│   ├── spl1-detections/       derived from security_content detections
+│   └── spl2/                  documented, published unversioned
 ├── fixtures/
 │   ├── mappings/              mapping files referenced by case metadata
 │   └── data/                  NDJSON seed data for the engines
@@ -123,6 +127,43 @@ interleaved failure, and `-parallel N` to raise or lower the bound.
 ```sh
 go test ./conformance -parallel 1 -v
 ```
+
+## Query corpus
+
+`corpus/` holds the queries the parser is tested against at breadth. It is not
+a second compatibility contract: `cases/` is what OpenSPL promises to emit,
+while the corpus is the broad input the parser has to survive. A collection is
+one of two kinds:
+
+- **Documented.** The example queries of the Splunk SPL and SPL2 search
+  references, gathered across documentation versions.
+- **Derived.** The searches of the Splunk `security_content` detections, with
+  the repository's own macro definitions expanded. The source does not publish
+  them as example queries, so the collection records its transformation and its
+  licence in `metadata.json` and ships the licence text beside the queries.
+
+`TestCorpus` runs with the offline suite and asserts three things:
+
+- **Robustness.** Every query parses, or is refused with a positioned
+  diagnostic. A panic, an error that is not a `*diag.Error`, or a position
+  outside the input fails, whatever the query says.
+- **Stability.** The outcome (`accepted`, or `error:<code>`) matches the
+  recorded baseline in `queries.jsonl`, so a behaviour change on gathered
+  syntax appears as a reviewable diff. Re-record it with `make corpus-update`
+  and read the diff before committing.
+- **Coverage.** Every implemented command appears at the start of at least one
+  stage in the collections of its dialect. A command with no corpus query is a
+  command nothing tests.
+
+The dialect, the kind, and the source versions live in each collection's
+`metadata.json`, and each query lists the versions that contain it. Nothing is
+inferred from the query text: `from` is the only textual hint, and classic SPL
+and SPL2 both use it.
+
+`scripts/gather-corpus.py` refreshes the corpus from the documentation and from
+the pinned `security_content` commit. It needs network access, so neither the
+tests nor CI run it. See [conformance/corpus/README.md](conformance/corpus/README.md)
+for the format, the cache, and the provenance.
 
 ## Engine cases
 

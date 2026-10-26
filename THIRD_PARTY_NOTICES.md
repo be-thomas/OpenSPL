@@ -34,6 +34,33 @@ listed here with their versions and licenses.
 | Upstream | <https://www.antlr.org/> |
 | Role | Build-time only. Generates the Go parser sources committed under `pkg/parser/*/gen`. Never shipped, and not needed to build OpenSPL. |
 
+## Splunk documentation examples
+
+| Field | Value |
+|---|---|
+| Source | Splunk Enterprise search reference and Splunk Cloud Platform SPL2 search reference |
+| Upstream | <https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference>, <https://help.splunk.com/en/splunk-cloud-platform/search/spl2-search-reference> |
+| Role | Test data only. `conformance/corpus` reproduces the documentation's short example queries as parser-coverage inputs. No prose is included, nothing is linked into the binary, and the gatherer records each query's page and documentation versions. |
+| Terms | The example queries remain Splunk's material and are not covered by OpenSPL's license. |
+
+## Splunk security_content detections
+
+| Field | Value |
+|---|---|
+| Source | Splunk security_content detection searches |
+| Commit | `a3f6523eabf696d66e20fdd80766bfae95575577` |
+| License | Apache License 2.0, reproduced at [`conformance/corpus/spl1-detections/LICENSE`](conformance/corpus/spl1-detections/LICENSE) |
+| Upstream | <https://github.com/splunk/security_content> |
+| Role | Test data only. `conformance/corpus/spl1-detections` holds the `search` value of each detection, transformed for parser coverage. Nothing is linked into the binary. |
+
+Changes to that material, as section 4(b) of the license requires stating: the
+`search` value of each detection was extracted; the repository's own macro
+definitions were expanded into it; the pipeline was cut at the first stage that
+calls a macro the repository does not define; whitespace was normalized; and
+texts that occur more than once were stored once, with every source detection
+listed. The detection title, description, and all other fields were dropped.
+The collection's `metadata.json` records the same transformation.
+
 ## Generated code
 
 The Go files under `pkg/parser/spl1/gen` and `pkg/parser/spl2/gen` are produced
