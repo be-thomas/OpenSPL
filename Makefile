@@ -7,7 +7,7 @@ LDFLAGS  := -s -w \
 	-X github.com/be-thomas/openspl/pkg/version.Commit=$(COMMIT) \
 	-X github.com/be-thomas/openspl/pkg/version.Date=$(DATE)
 
-.PHONY: all build test race vet fmt fmt-check check hooks generate generate-check conformance conformance-update corpus-update e2e clean help
+.PHONY: all build test race vet fmt fmt-check check hooks generate generate-check conformance conformance-update corpus-update corpus-report e2e clean help
 
 all: check
 
@@ -68,6 +68,11 @@ conformance-update:
 corpus-update:
 	go test ./conformance -count=1 -run TestCorpus -update-corpus
 
+# The compile report printed here is pasted into README.md; see
+# conformance/report_test.go.
+corpus-report:
+	go test ./conformance -count=1 -run TestCorpusReport -v -corpus-report
+
 e2e:
 	./conformance/engines/run.sh
 
@@ -90,5 +95,6 @@ help:
 		'conformance  run the offline conformance suite' \
 		'conformance-update  regenerate goldens and expectations' \
 		'corpus-update  re-record the query corpus outcomes' \
+		'corpus-report  print the corpus compile report for README.md' \
 		'e2e        run the Docker engine harness' \
 		'clean      remove build output'

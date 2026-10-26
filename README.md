@@ -200,6 +200,38 @@ refused with a positioned diagnostic.
 
 Full matrix → [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
 
+## Conformance report
+
+Measured over the checked-in query corpus: 2,812 queries in total, made up of
+549 documented SPL1 examples, 2,171 detection searches from Splunk
+`security_content`, and 92 documented SPL2 examples. The IR is the parsed
+`*ast.Pipeline`; ES\|QL (the SQL-style back-end) and PromQL are the two
+back-ends, so there is no separate SQL target. `SPL→x` is the share of every
+query in the row; `IR→x` is the share of the queries that parsed. All figures
+use the compiled-in default mapping with no per-query index, metric, or span
+override.
+
+| Collection | Queries | → IR | SPL→IR | → ES\|QL | SPL→ES\|QL | IR→ES\|QL | → PromQL | SPL→PromQL | IR→PromQL |
+|---|---|---|---|---|---|---|---|---|---|
+| `spl1` | 549 | 69 | 12.6% | 59 | 10.7% | 85.5% | 6 | 1.1% | 8.7% |
+| `spl1-detections` | 2,171 | 15 | 0.7% | 6 | 0.3% | 40.0% | 0 | 0.0% | 0.0% |
+| `spl2` | 92 | 0 | 0.0% | 0 | 0.0% | — | 0 | 0.0% | — |
+| **Total** | **2,812** | **84** | **3.0%** | **65** | **2.3%** | **77.4%** | **6** | **0.2%** | **7.1%** |
+
+84 of 2,812 queries (3.0%) parse to the IR, 65 (2.3%) compile end-to-end to
+ES\|QL, and 6 (0.2%) to PromQL. The low SPL1 detection figure is parser
+coverage, not emitter coverage — `tstats` alone accounts for 1,022 of the
+refusals. Where a query does parse, ES\|QL emits for 77.4% and PromQL for 7.1%.
+
+The 78 PromQL refusals are deliberate. The largest single cause is
+`promql-no-aggregation` (21): the pipeline does not end in an aggregation, so
+it produces rows rather than a time series. Another 33 use a stage with no
+PromQL form — `eval` 17, `table` 9, `rex` 5, `fields` 2 — and 16 combine or
+name an aggregation PromQL cannot express. The remaining 8 are refused over
+row filters, free-text terms, or ordering.
+
+Regenerate with `make corpus-report`; it prints this table from the corpus.
+
 ---
 
 ## Architecture
