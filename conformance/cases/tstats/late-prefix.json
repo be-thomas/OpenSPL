@@ -1,0 +1,16 @@
+{
+  "description": "a data-model field first referenced after the tstats stage is resolved and still warns",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 35
+        }
+      ]
+    }
+  }
+}

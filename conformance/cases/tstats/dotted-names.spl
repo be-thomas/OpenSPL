@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Web WHERE source.address="10.0.0.1" BY Web.src

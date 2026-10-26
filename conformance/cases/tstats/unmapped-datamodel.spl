@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Change WHERE Change.action=created BY Change.user

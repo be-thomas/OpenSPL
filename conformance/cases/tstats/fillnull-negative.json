@@ -1,0 +1,13 @@
+{
+  "description": "a signed fillnull_value parses and is refused by value, not as a syntax error",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "tstats-fillnull",
+        "line": 1,
+        "col": 8
+      }
+    }
+  }
+}

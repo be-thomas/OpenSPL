@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The `tstats` command, the first stage of a pipeline only. Its data model is
+  resolved to an Elasticsearch index through a new `datamodels` mapping key
+  (`--index` first, then an `index=` filter in `WHERE`, then
+  `datamodels[<name>]`, then `default_index`), and its aggregation becomes an
+  ES\|QL `STATS`. Data-model field references (`Processes.dest`) lose the data
+  model name or root-dataset prefix and then run through `fields`; the prefix is
+  dropped with a `tstats-field-prefix` warning wherever it first appears, while
+  other dotted names such as `source.address` are left alone. An unmapped data
+  model falls back with
+  `tstats-datamodel`. `span=` with `_time` becomes `BUCKET(@timestamp, N unit)`
+  and is ignored elsewhere with `tstats-span`. `summariesonly`,
+  `allow_old_summaries`, and `prestats` are accepted and ignored with a
+  `tstats-option` info; every other option is refused with
+  `tstats-unknown-option`, a non-null `fillnull_value` with `tstats-fillnull`,
+  and a `tstats` after stage 0 with `tstats-position`. PromQL refuses the stage.
+- `values`, `earliest`, and `latest` aggregations in ES\|QL, which `tstats`
+  detections use heavily.
 - The `rename` command, translated to one ES\|QL `RENAME` command carrying
   every pair. Wildcard patterns (`EU* AS EMEA*`, `properties.* AS *`) parse but
   are refused with `rename-wildcard`, because ES\|QL `RENAME` has no wildcard

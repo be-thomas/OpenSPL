@@ -41,6 +41,7 @@ emission, and PromQL `job` matchers behave exactly as for classic SPL.
 | `where` | ✅ | ✅ | ⚠️ `=` / `!=` only |
 | `stats` | ✅ | ✅ | ⚠️ single `count` |
 | `timechart` | ✅ | ✅ | ✅ |
+| `tstats` | ✅ first stage only | ⚠️ data model → index via the mapping | ⛔ |
 | `eval` | ✅ | ✅ known functions; ⚠️ unknown passthrough | ⛔ |
 | `rex` | ✅ | ⚠️ regex → Grok | ⛔ |
 | `table` | ✅ | ✅ | ⛔ |
@@ -91,6 +92,8 @@ warning. Verify them against your Elasticsearch version.
 | `sum(field)` | `SUM(field)` | ⛔ |
 | `avg(field)` | `AVG(field)` | ⛔ |
 | `min(field)` / `max(field)` | `MIN` / `MAX` | ⛔ |
+| `values(field)` | `VALUES(field)` | ⛔ |
+| `earliest(field)` / `latest(field)` | `EARLIEST` / `LATEST` | ⛔ |
 | everything else | ⛔ `unsupported-agg` | ⛔ |
 
 ## Time bounds
@@ -125,6 +128,35 @@ Index names pass through the optional `indexes` map in the mapping file.
 PromQL has no `FROM` clause: index filters become `job` matchers, so an `OR`
 over index filters is refused with `promql-unsupported-filter`.
 
+## tstats
+
+`tstats` reads a data model rather than an index, so it must be the first
+stage; anywhere else it is refused with `tstats-position`. The stage lowers to
+an ordinary search plus an aggregation.
+
+| Aspect | Behaviour |
+|---|---|
+| Source index | `--index` override, else `index=` inside `WHERE`, else `datamodels[<name>]`, else `default_index` |
+| `count` without parentheses | `COUNT(*)`, exactly like `stats` |
+| `_time` in `BY` | `@timestamp`, or `BUCKET(@timestamp, N unit)` with `span=` |
+| Data-model field (`Processes.dest`) | The model name or root dataset (`Processes`) is dropped, then the mapping's `fields` dictionary runs |
+| Other dotted names (`source.address`) | Left alone: they are columns, not data-model references |
+| Acceleration options | `summariesonly`, `allow_old_summaries`, `prestats` are ignored with a `tstats-option` info |
+| `fillnull_value` | `null` and unset are accepted; any other value is refused |
+| `earliest` / `latest` | Lifted into the `WHERE` clause like a search stage |
+
+Field-prefix stripping always warns (`tstats-field-prefix`), because
+`Processes.dest` and a bare `dest` are not guaranteed to be the same column
+after the mapping. Only a name that starts with the data model name or its root
+dataset is treated as a data-model reference; `source.address` and `host.name`
+are column names and pass through unchanged. A prefixed field first used in a
+later stage (`tstats … | table Web.src`) is resolved the same way and warns
+too. An unmapped data model falls back to the default index and warns
+(`tstats-datamodel`); map it under `datamodels` to avoid that.
+
+A `span=` with no `_time` in the `BY` list is ignored with `tstats-span`, since
+nothing is bucketed. PromQL refuses `tstats` with `promql-unsupported-stage`.
+
 ## Refused SPL commands
 
 Recognized but not implemented in v0.1 (classic SPL; in SPL2, `from` is the start of a pipeline):
@@ -142,7 +174,7 @@ Recognized but not implemented in v0.1 (classic SPL; in SPL2, `from` is the star
 `reltime`, `replace`, `rest`, `return`, `reverse`, `script`, `scrub`,
 `select`, `selfjoin`, `sendemail`, `set`, `setfields`, `spath`, `strcat`,
 `streamstats`, `tags`, `tail`, `top`, `transaction`, `transpose`, `trendline`,
-`tscollect`, `tstats`, `typeahead`, `typer`, `union`, `uniq`, `untable`, `x11`,
+`tscollect`, `typeahead`, `typer`, `union`, `uniq`, `untable`, `x11`,
 `xmlkv`, `xmlunescape`, `xpath`.
 
 They return `unsupported-command` with the command's source position.
@@ -183,6 +215,13 @@ They return `unsupported-command` with the command's source position.
 | `rename-duplicate` | error | One field is renamed twice in a command |
 | `rename-conflict` | error | Pairs would interact: a target is another source, or two pairs share a target |
 | `rename-source-dropped` | error | A later stage references a name that `rename` moved to a new name |
+| `tstats-option` | info | An acceleration option was ignored |
+| `tstats-datamodel` | warning | Data model is not in the mapping's `datamodels`; default index used |
+| `tstats-field-prefix` | warning | Data-model prefix was dropped from a field name |
+| `tstats-span` | warning | `span=` has no `_time` to bucket |
+| `tstats-unknown-option` | error | Unrecognized `tstats` option |
+| `tstats-fillnull` | error | Only `fillnull_value=null` is expressible |
+| `tstats-position` | error | `tstats` is not the first stage |
 | `unsupported-stage` | error | No emitter for the IR node |
 
 ### PromQL emitter

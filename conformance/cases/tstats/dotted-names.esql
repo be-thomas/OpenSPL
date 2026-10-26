@@ -1,0 +1,3 @@
+FROM logs-web-*
+| WHERE `source.address` == "10.0.0.1"
+| STATS count = COUNT(*) BY `source.address`

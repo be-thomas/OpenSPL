@@ -1,0 +1,13 @@
+{
+  "description": "an unknown tstats option is refused at its name",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "tstats-unknown-option",
+        "line": 1,
+        "col": 8
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@ conformance/
 │   ├── search/                search expressions, wildcards, time bounds
 │   ├── stats/                 aggregations and grouping
 │   ├── timechart/             bucketed aggregation
+│   ├── tstats/                data-model aggregation and its refusals
 │   ├── eval/                  expression lowering
 │   ├── rex/                   extraction lowering
 │   ├── shaping/               table, fields, sort, head

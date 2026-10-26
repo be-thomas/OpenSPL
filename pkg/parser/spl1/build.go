@@ -218,6 +218,9 @@ func (b *builder) commandBody(ctx spl1gen.ICommandContext) (ast.Stage, error) {
 			})
 		}
 		return &ast.RenameStage{Renames: renames, Pos: b.pos(c.GetStart())}, nil
+
+	case *spl1gen.CmdTstatsContext:
+		return b.tstats(c.GetStart(), c.TstatsBody())
 	}
 	return nil, diag.NewError(ast.Pos{Line: 1, Col: 1}, "syntax", "unrecognized command")
 }
@@ -319,14 +322,89 @@ func (b *builder) aggregateParts(fnTok antlr.Token, parenthesized bool,
 func (b *builder) byClause(ctx spl1gen.IByClauseContext) ([]ast.Expr, error) {
 	var out []ast.Expr
 	for _, fe := range ctx.FieldExprList().AllFieldExpr() {
-		if star := fe.Star(); star != nil {
-			out = append(out, &ast.WildcardLit{Pos: b.pos(star.GetStart())})
-			continue
-		}
-		tok := fe.IdentLike().GetStart()
-		out = append(out, &ast.FieldRef{Name: tok.GetText(), Pos: b.pos(tok)})
+		out = append(out, b.groupField(fe))
 	}
 	return out, nil
+}
+
+// groupField lowers one group-by field. A star stays a wildcard so the emitter
+// can refuse or drop it on one code path.
+func (b *builder) groupField(fe spl1gen.IFieldExprContext) ast.Expr {
+	if star := fe.Star(); star != nil {
+		return &ast.WildcardLit{Pos: b.pos(star.GetStart())}
+	}
+	tok := fe.IdentLike().GetStart()
+	return &ast.FieldRef{Name: tok.GetText(), Pos: b.pos(tok)}
+}
+
+// tstats lowers a data-model aggregation. The option names are lowercased and
+// quoted option values are decoded, so the emitter sees `summariesonly=false`
+// and `fillnull_value=n/a` regardless of source spelling. A later span= wins
+// over an earlier one, as it does in `bin`.
+func (b *builder) tstats(cmd antlr.Token, body spl1gen.ITstatsBodyContext) (ast.Stage, error) {
+	st := &ast.TstatsStage{Pos: b.pos(cmd)}
+
+	for _, opt := range body.AllTstatsOption() {
+		tok := opt.IdentLike().GetStart()
+		st.Options = append(st.Options, ast.TstatsOption{
+			Name:  strings.ToLower(tok.GetText()),
+			Value: b.tstatsOptionValue(opt.TstatsOptionValue()),
+			Pos:   b.pos(tok),
+		})
+	}
+
+	for _, a := range body.TstatsAggList().AllTstatsAgg() {
+		agg, err := b.aggregateParts(a.TstatsAggWord().GetStart(), a.LPAREN() != nil,
+			a.ValueExpr(), a.AliasClause())
+		if err != nil {
+			return nil, err
+		}
+		st.Aggs = append(st.Aggs, agg)
+	}
+
+	if from := body.TstatsFrom(); from != nil {
+		nameTok := from.TstatsDatamodel().IdentLike().GetStart()
+		if !strings.EqualFold(nameTok.GetText(), "datamodel") {
+			return nil, diag.NewError(b.pos(nameTok), "syntax",
+				"tstats FROM expects datamodel=<name>, found %q", nameTok.GetText())
+		}
+		value := from.IdentLike().GetStart()
+		st.Datamodel = value.GetText()
+		st.DatamodelPos = b.pos(value)
+	}
+
+	if where := body.TstatsWhere(); where != nil {
+		expr, err := b.searchExpr(where.SearchExpr())
+		if err != nil {
+			return nil, err
+		}
+		// earliest/latest are global search modifiers, exactly as they are in a
+		// search stage, so they are lifted out of the same expression.
+		probe := &ast.SearchStage{Expr: expr, Pos: b.pos(where.GetStart())}
+		if err := extractTimeBounds(probe); err != nil {
+			return nil, err
+		}
+		st.Where, st.Earliest, st.Latest = probe.Expr, probe.Earliest, probe.Latest
+	}
+
+	if by := body.TstatsBy(); by != nil {
+		for _, item := range by.AllTstatsByItem() {
+			st.By = append(st.By, b.groupField(item.FieldExpr()))
+			if assign := item.SpanAssign(); assign != nil {
+				st.Span = b.spanValue(assign.SpanValue())
+				st.SpanPos = b.pos(item.SPAN().GetSymbol())
+			}
+		}
+	}
+
+	return st, nil
+}
+
+func (b *builder) tstatsOptionValue(ctx spl1gen.ITstatsOptionValueContext) string {
+	if s := ctx.STRING(); s != nil {
+		return decodeString(s.GetSymbol().GetText())
+	}
+	return b.text(ctx)
 }
 
 func (b *builder) spanValue(ctx spl1gen.ISpanValueContext) string {

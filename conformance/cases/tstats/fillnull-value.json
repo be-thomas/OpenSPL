@@ -1,0 +1,13 @@
+{
+  "description": "a non-null fillnull_value has no exact translation and is refused at the option",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "tstats-fillnull",
+        "line": 1,
+        "col": 8
+      }
+    }
+  }
+}

@@ -21,6 +21,7 @@ type Config struct {
 	TextField    string            `json:"text_field"`
 	Fields       map[string]string `json:"fields"`
 	Indexes      map[string]string `json:"indexes,omitempty"`
+	Datamodels   map[string]string `json:"datamodels,omitempty"`
 	Prometheus   Prometheus        `json:"prometheus"`
 	Timechart    Timechart         `json:"timechart"`
 	Bin          Bin               `json:"bin"`
@@ -55,7 +56,8 @@ func Default() *Config {
 			"source":     "log.file.path",
 			"sourcetype": "event.dataset",
 		},
-		Indexes: map[string]string{},
+		Indexes:    map[string]string{},
+		Datamodels: map[string]string{},
 		Prometheus: Prometheus{
 			Metric:     "splunk_events_total",
 			IndexLabel: "job",
@@ -129,6 +131,15 @@ func (c *Config) Index(name string) string {
 		return mapped
 	}
 	return name
+}
+
+// Datamodel maps a Splunk data-model name to the Elasticsearch index pattern
+// that holds its events. tstats reads a data model rather than an index, and a
+// data-model name is not an index name, so the mapping has to say where its
+// events live. An empty value is not a mapping.
+func (c *Config) Datamodel(name string) (string, bool) {
+	index, ok := c.Datamodels[name]
+	return index, ok && index != ""
 }
 
 // Label maps a Splunk field name to a Prometheus label name.

@@ -67,6 +67,10 @@ func (v *BaseSPL1Visitor) VisitCmdRename(ctx *CmdRenameContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSPL1Visitor) VisitCmdTstats(ctx *CmdTstatsContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSPL1Visitor) VisitSearchExpr(ctx *SearchExprContext) interface{} {
 	return v.VisitChildren(ctx)
 }
@@ -360,6 +364,50 @@ func (v *BaseSPL1Visitor) VisitAliasClause(ctx *AliasClauseContext) interface{} 
 }
 
 func (v *BaseSPL1Visitor) VisitByClause(ctx *ByClauseContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsBody(ctx *TstatsBodyContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsAggList(ctx *TstatsAggListContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsAgg(ctx *TstatsAggContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsAggWord(ctx *TstatsAggWordContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsOption(ctx *TstatsOptionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsOptionValue(ctx *TstatsOptionValueContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsFrom(ctx *TstatsFromContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsDatamodel(ctx *TstatsDatamodelContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsWhere(ctx *TstatsWhereContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsBy(ctx *TstatsByContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSPL1Visitor) VisitTstatsByItem(ctx *TstatsByItemContext) interface{} {
 	return v.VisitChildren(ctx)
 }
 

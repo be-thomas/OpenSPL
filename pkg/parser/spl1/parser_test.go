@@ -973,6 +973,239 @@ func TestRenameErrors(t *testing.T) {
 	}
 }
 
+// TestTstats covers the data-model aggregation form: options, then the
+// aggregations, then an optional `FROM datamodel=<name>`, an optional WHERE,
+// and an optional BY list whose span applies to _time.
+func TestTstats(t *testing.T) {
+	t.Run("full form", func(t *testing.T) {
+		const src = `tstats summariesonly=false count min(_time) as firstTime FROM datamodel=Endpoint.Processes WHERE Processes.process_name=cmd.exe BY _time span=5m Processes.dest`
+		p := mustParse(t, src)
+		if len(p.Stages) != 1 {
+			t.Fatalf("got %d stages, want 1", len(p.Stages))
+		}
+		s, ok := p.Stages[0].(*ast.TstatsStage)
+		if !ok {
+			t.Fatalf("stage = %#v, want *ast.TstatsStage", p.Stages[0])
+		}
+		if s.Pos != (ast.Pos{Line: 1, Col: 1, Offset: 0}) {
+			t.Errorf("stage pos = %#v, want the tstats token", s.Pos)
+		}
+		if s.Datamodel != "Endpoint.Processes" {
+			t.Errorf("datamodel = %q, want Endpoint.Processes", s.Datamodel)
+		}
+		if s.DatamodelPos != (ast.Pos{Line: 1, Col: 73, Offset: 72}) {
+			t.Errorf("datamodel pos = %#v, want the name token", s.DatamodelPos)
+		}
+		wantOpts := []ast.TstatsOption{{
+			Name: "summariesonly", Value: "false",
+			Pos: ast.Pos{Line: 1, Col: 8, Offset: 7},
+		}}
+		if len(s.Options) != len(wantOpts) || s.Options[0] != wantOpts[0] {
+			t.Errorf("options = %#v, want %#v", s.Options, wantOpts)
+		}
+		if len(s.Aggs) != 2 {
+			t.Fatalf("got %d aggregations, want 2", len(s.Aggs))
+		}
+		if want := (ast.Aggregate{Func: "count", Pos: ast.Pos{Line: 1, Col: 28, Offset: 27}}); !aggregateEqual(s.Aggs[0], want) {
+			t.Errorf("agg 0 = %#v, want %#v", s.Aggs[0], want)
+		}
+		wantMin := ast.Aggregate{
+			Func:  "min",
+			Arg:   &ast.FieldRef{Name: "_time", Pos: ast.Pos{Line: 1, Col: 38, Offset: 37}},
+			Alias: "firstTime",
+			Pos:   ast.Pos{Line: 1, Col: 34, Offset: 33},
+		}
+		if !aggregateEqual(s.Aggs[1], wantMin) {
+			t.Errorf("agg 1 = %#v, want %#v", s.Aggs[1], wantMin)
+		}
+
+		cmp, ok := s.Where.(*ast.BinaryExpr)
+		if !ok || cmp.Op != "=" {
+			t.Fatalf("where = %#v, want one comparison", s.Where)
+		}
+		if f, ok := cmp.Left.(*ast.FieldRef); !ok || f.Name != "Processes.process_name" {
+			t.Errorf("where left = %#v, want the data-model field reference", cmp.Left)
+		}
+		if v, ok := cmp.Right.(*ast.StringLit); !ok || v.Value != "cmd.exe" {
+			t.Errorf("where right = %#v, want the literal value cmd.exe", cmp.Right)
+		}
+
+		if len(s.By) != 2 {
+			t.Fatalf("got %d group fields, want 2", len(s.By))
+		}
+		if f, ok := s.By[0].(*ast.FieldRef); !ok || f.Name != "_time" ||
+			f.Pos != (ast.Pos{Line: 1, Col: 132, Offset: 131}) {
+			t.Errorf("group 0 = %#v, want _time at 1:132", s.By[0])
+		}
+		if f, ok := s.By[1].(*ast.FieldRef); !ok || f.Name != "Processes.dest" ||
+			f.Pos != (ast.Pos{Line: 1, Col: 146, Offset: 145}) {
+			t.Errorf("group 1 = %#v, want Processes.dest at 1:146", s.By[1])
+		}
+		if s.Span != "5m" {
+			t.Errorf("span = %q, want 5m", s.Span)
+		}
+		if s.SpanPos != (ast.Pos{Line: 1, Col: 138, Offset: 137}) {
+			t.Errorf("span pos = %#v, want the span keyword", s.SpanPos)
+		}
+	})
+
+	t.Run("datamodel only", func(t *testing.T) {
+		s := tstatsStage(t, `tstats count FROM datamodel=Web`)
+		if s.Datamodel != "Web" || s.DatamodelPos != (ast.Pos{Line: 1, Col: 29, Offset: 28}) {
+			t.Errorf("datamodel = %q at %#v, want Web at 1:29", s.Datamodel, s.DatamodelPos)
+		}
+		if s.Where != nil || len(s.By) != 0 || s.Span != "" {
+			t.Errorf("stage has clauses it should not: %#v", s)
+		}
+		if s.SpanPos != (ast.Pos{}) {
+			t.Errorf("span pos = %#v, want the zero position", s.SpanPos)
+		}
+	})
+
+	t.Run("lowercase keywords and comma separated aggregations", func(t *testing.T) {
+		s := tstatsStage(t, `tstats count, values(Web.url) as urls from datamodel=Web where Web.status=200 by Web.src`)
+		if s.Datamodel != "Web" {
+			t.Errorf("datamodel = %q, want Web", s.Datamodel)
+		}
+		if len(s.Aggs) != 2 || s.Aggs[1].Func != "values" || s.Aggs[1].Alias != "urls" {
+			t.Fatalf("aggregations = %#v, want count and values(...) as urls", s.Aggs)
+		}
+		if f, ok := s.Aggs[1].Arg.(*ast.FieldRef); !ok || f.Name != "Web.url" {
+			t.Errorf("values argument = %#v, want the field reference Web.url", s.Aggs[1].Arg)
+		}
+		if _, ok := s.Where.(*ast.BinaryExpr); !ok {
+			t.Errorf("where = %#v, want the comparison Web.status=200", s.Where)
+		}
+		if len(s.By) != 1 {
+			t.Fatalf("got %d group fields, want 1", len(s.By))
+		}
+		if f, ok := s.By[0].(*ast.FieldRef); !ok || f.Name != "Web.src" {
+			t.Errorf("group 0 = %#v, want Web.src", s.By[0])
+		}
+	})
+
+	t.Run("index filter without a datamodel", func(t *testing.T) {
+		s := tstatsStage(t, `tstats count where index=web status=500 by host`)
+		if s.Datamodel != "" || s.DatamodelPos != (ast.Pos{}) {
+			t.Errorf("datamodel = %q at %#v, want none", s.Datamodel, s.DatamodelPos)
+		}
+		cmp, ok := s.Where.(*ast.BinaryExpr)
+		if !ok || cmp.Op != "and" {
+			t.Fatalf("where = %#v, want an implicit AND", s.Where)
+		}
+	})
+
+	t.Run("quoted option value", func(t *testing.T) {
+		s := tstatsStage(t, `tstats fillnull_value="n/a" count FROM datamodel=Web`)
+		want := ast.TstatsOption{Name: "fillnull_value", Value: "n/a", Pos: ast.Pos{Line: 1, Col: 8, Offset: 7}}
+		if len(s.Options) != 1 || s.Options[0] != want {
+			t.Errorf("options = %#v, want %#v", s.Options, want)
+		}
+	})
+
+	t.Run("signed option value", func(t *testing.T) {
+		s := tstatsStage(t, `tstats fillnull_value=-1 count FROM datamodel=Web`)
+		want := ast.TstatsOption{Name: "fillnull_value", Value: "-1", Pos: ast.Pos{Line: 1, Col: 8, Offset: 7}}
+		if len(s.Options) != 1 || s.Options[0] != want {
+			t.Errorf("options = %#v, want %#v", s.Options, want)
+		}
+	})
+
+	t.Run("time bounds are lifted out of the where clause", func(t *testing.T) {
+		s := tstatsStage(t, `tstats count FROM datamodel=Web WHERE earliest=-7d latest=now node=web`)
+		if s.Earliest != "-7d" || s.Latest != "now" {
+			t.Errorf("bounds = %q..%q, want -7d..now", s.Earliest, s.Latest)
+		}
+		cmp, ok := s.Where.(*ast.BinaryExpr)
+		if !ok || cmp.Op != "=" {
+			t.Fatalf("where = %#v, want only the node comparison", s.Where)
+		}
+		if f, ok := cmp.Left.(*ast.FieldRef); !ok || f.Name != "node" {
+			t.Errorf("where left = %#v, want node", cmp.Left)
+		}
+	})
+}
+
+func tstatsStage(t *testing.T, src string) *ast.TstatsStage {
+	t.Helper()
+	p := mustParse(t, src)
+	if len(p.Stages) != 1 {
+		t.Fatalf("got %d stages, want 1", len(p.Stages))
+	}
+	s, ok := p.Stages[0].(*ast.TstatsStage)
+	if !ok {
+		t.Fatalf("stage = %#v, want *ast.TstatsStage", p.Stages[0])
+	}
+	return s
+}
+
+func aggregateEqual(a, b ast.Aggregate) bool {
+	if a.Func != b.Func || a.Alias != b.Alias || a.Pos != b.Pos {
+		return false
+	}
+	if (a.Arg == nil) != (b.Arg == nil) {
+		return false
+	}
+	if a.Arg == nil {
+		return true
+	}
+	af, aok := a.Arg.(*ast.FieldRef)
+	bf, bok := b.Arg.(*ast.FieldRef)
+	return aok && bok && *af == *bf
+}
+
+// TestTstatsErrors pins the argument errors at their token. The clause order is
+// fixed by the grammar, so a clause out of order is a syntax error rather than
+// a silently reordered stage.
+func TestTstatsErrors(t *testing.T) {
+	tests := []struct {
+		src string
+		col int
+	}{
+		{`tstats`, 7},
+		{`tstats summariesonly=false`, 27},
+		{`tstats count FROM datamodel=`, 29},
+		{`tstats count FROM index=web`, 19},
+		{`tstats count, FROM datamodel=Web`, 15},
+		{`tstats count FROM datamodel=Web BY`, 35},
+		{`tstats count FROM datamodel=Web WHERE`, 38},
+		{`tstats count FROM datamodel=Web BY _time span=`, 47},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			if ds[0].Code != "syntax" {
+				t.Fatalf("code = %q, want syntax (%v)", ds[0].Code, err)
+			}
+			if ds[0].Pos.Line != 1 || ds[0].Pos.Col != tc.col {
+				t.Fatalf("diagnostic at %d:%d, want 1:%d (%v)",
+					ds[0].Pos.Line, ds[0].Pos.Col, tc.col, ds[0].Message)
+			}
+		})
+	}
+}
+
+// TestTstatsFromNamesTheDatamodel pins the message for the only clause that
+// takes a fixed key: `FROM datamodel=<name>`.
+func TestTstatsFromNamesTheDatamodel(t *testing.T) {
+	_, err := Parse(`tstats count FROM index=web`)
+	ds, ok := diag.FromError(err)
+	if !ok || len(ds) != 1 {
+		t.Fatalf("err = %v, want one diagnostic", err)
+	}
+	const want = `tstats FROM expects datamodel=<name>, found "index"`
+	if ds[0].Message != want {
+		t.Fatalf("message = %q, want %q", ds[0].Message, want)
+	}
+}
+
 // TestBinRejectsSecondField covers the single-field rule: the second field is
 // refused at its own token, before any later argument error can be reported.
 func TestBinRejectsSecondField(t *testing.T) {

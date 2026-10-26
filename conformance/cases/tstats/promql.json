@@ -1,0 +1,13 @@
+{
+  "description": "PromQL has no data-model aggregation, so tstats is refused at its token",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "promql": {
+      "error": {
+        "code": "promql-unsupported-stage",
+        "line": 1,
+        "col": 1
+      }
+    }
+  }
+}

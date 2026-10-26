@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Web WHERE index=legacy Web.status=500 BY Web.src

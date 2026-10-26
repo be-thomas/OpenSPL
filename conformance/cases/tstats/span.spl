@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Web BY _time span=5m Web.src

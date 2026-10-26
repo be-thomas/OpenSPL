@@ -1,0 +1,16 @@
+{
+  "description": "earliest and latest are lifted out of the data-model WHERE clause",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 52
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "description": "tstats resolves the data model to an index and drops data-model field prefixes before the field dictionary runs",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 39
+        }
+      ]
+    }
+  }
+}
