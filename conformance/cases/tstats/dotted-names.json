@@ -1,0 +1,16 @@
+{
+  "description": "only a data-model node prefix is dropped; source.address is a column and is left alone",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 68
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,3 @@
+FROM logs-web-*
+| STATS count = COUNT(*)
+| KEEP `source.address`
