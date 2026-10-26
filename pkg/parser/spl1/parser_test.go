@@ -1103,6 +1103,14 @@ func TestTstats(t *testing.T) {
 		}
 	})
 
+	t.Run("signed option value", func(t *testing.T) {
+		s := tstatsStage(t, `tstats fillnull_value=-1 count FROM datamodel=Web`)
+		want := ast.TstatsOption{Name: "fillnull_value", Value: "-1", Pos: ast.Pos{Line: 1, Col: 8, Offset: 7}}
+		if len(s.Options) != 1 || s.Options[0] != want {
+			t.Errorf("options = %#v, want %#v", s.Options, want)
+		}
+	})
+
 	t.Run("time bounds are lifted out of the where clause", func(t *testing.T) {
 		s := tstatsStage(t, `tstats count FROM datamodel=Web WHERE earliest=-7d latest=now node=web`)
 		if s.Earliest != "-7d" || s.Latest != "now" {

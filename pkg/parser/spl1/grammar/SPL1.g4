@@ -601,10 +601,12 @@ tstatsOption
   ;
 
 // Option values are unquoted words, numbers, durations, or quoted strings:
-// `summariesonly=false`, `prestats=t`, `fillnull_value="n/a"`.
+// `summariesonly=false`, `prestats=t`, `fillnull_value="n/a"`. A number may be
+// signed, so `fillnull_value=-1` reaches the emitter, which refuses it by
+// value instead of failing as a syntax error at the minus.
 tstatsOptionValue
   : identLike
-  | number
+  | sign? number
   | DURATION
   | STRING
   ;
