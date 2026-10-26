@@ -60,6 +60,29 @@ func TestSanitizeLabel(t *testing.T) {
 	}
 }
 
+// TestDatamodel covers the lookup the tstats emitter relies on: a data model
+// is a name, not an index, so an unmapped one must be distinguishable from one
+// mapped to the empty string.
+func TestDatamodel(t *testing.T) {
+	cfg := Default()
+	if _, ok := cfg.Datamodel("Web"); ok {
+		t.Error("the default mapping maps data models")
+	}
+	cfg.Datamodels = map[string]string{
+		"Web":   "logs-web-*",
+		"Empty": "",
+	}
+	if idx, ok := cfg.Datamodel("Web"); !ok || idx != "logs-web-*" {
+		t.Errorf("Datamodel(Web) = %q, %v; want logs-web-*, true", idx, ok)
+	}
+	if idx, ok := cfg.Datamodel("Empty"); ok {
+		t.Errorf("Datamodel(Empty) = %q, true; an empty index is not a mapping", idx)
+	}
+	if _, ok := cfg.Datamodel("web"); ok {
+		t.Error("Datamodel(web) matched Web; data-model names are case-sensitive")
+	}
+}
+
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 
@@ -69,6 +92,7 @@ func TestLoad(t *testing.T) {
 		"text_field": "message",
 		"fields": {"host": "host.name"},
 		"indexes": {"web": "logs-web-*"},
+		"datamodels": {"Web": "logs-web-*"},
 		"prometheus": {"metric": "events_total", "function": "rate"},
 		"timechart": {"default_span": "1m"}
 	}`), 0o600); err != nil {
@@ -83,6 +107,9 @@ func TestLoad(t *testing.T) {
 	}
 	if got := cfg.Index("web"); got != "logs-web-*" {
 		t.Errorf("Index(web) = %q", got)
+	}
+	if idx, ok := cfg.Datamodel("Web"); !ok || idx != "logs-web-*" {
+		t.Errorf("Datamodel(Web) = %q, %v; want logs-web-*, true", idx, ok)
 	}
 
 	unknown := filepath.Join(dir, "unknown.json")
