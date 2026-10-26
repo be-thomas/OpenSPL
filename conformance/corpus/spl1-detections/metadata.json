@@ -1,0 +1,19 @@
+{
+  "corpus_format": 1,
+  "dialect": "spl1",
+  "kind": "derived",
+  "source": "Splunk security_content detections, macro-expanded",
+  "base_url": "https://github.com/splunk/security_content",
+  "versions": [
+    "a3f6523eabf696d66e20fdd80766bfae95575577"
+  ],
+  "retrieved": "2026-10-26",
+  "queries": 2145,
+  "queries_per_version": {
+    "a3f6523eabf696d66e20fdd80766bfae95575577": 2145
+  },
+  "gatherer": "scripts/gather-corpus.py",
+  "transform": "Each detection's search with the repository's own macro definitions expanded, cut at the first stage that calls a macro the repository does not define, and whitespace-normalized.",
+  "license": "Apache-2.0",
+  "note": "Queries are the repository's own detection searches, transformed as recorded in `transform`, stored as syntax coverage. The version is the repository commit, never inferred from the query text."
+}

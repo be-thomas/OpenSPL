@@ -1,6 +1,7 @@
 {
   "corpus_format": 1,
   "dialect": "spl2",
+  "kind": "documented",
   "source": "Splunk Cloud Platform SPL2 search reference, documented examples",
   "base_url": "https://help.splunk.com/en/splunk-cloud-platform/search/spl2-search-reference",
   "versions": [

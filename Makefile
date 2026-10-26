@@ -89,6 +89,6 @@ help:
 		'generate-check  fail if committed parsers differ from the grammars' \
 		'conformance  run the offline conformance suite' \
 		'conformance-update  regenerate goldens and expectations' \
-		'corpus-update  re-record the documented-query corpus outcomes' \
+		'corpus-update  re-record the query corpus outcomes' \
 		'e2e        run the Docker engine harness' \
 		'clean      remove build output'

@@ -1,6 +1,7 @@
 {
   "corpus_format": 1,
   "dialect": "spl1",
+  "kind": "documented",
   "source": "Splunk Enterprise search reference, documented examples",
   "base_url": "https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference",
   "versions": [

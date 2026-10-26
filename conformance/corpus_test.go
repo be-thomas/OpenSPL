@@ -1,21 +1,26 @@
-// Corpus tests: the documented SPL and SPL2 example queries.
+// Corpus tests: the gathered SPL and SPL2 query collections.
 //
-// The corpus under corpus/ holds the example queries from the Splunk
-// documentation, gathered across documentation versions by
-// scripts/gather-corpus.py. Each collection records its dialect and the
-// versions the queries came from in metadata.json, because a query file says
-// nothing about the version it belongs to.
+// The corpus under corpus/ holds query collections gathered by
+// scripts/gather-corpus.py. A collection is one of two kinds: documented
+// collections are the example queries of the Splunk documentation, and derived
+// collections are transformed from another source, which is currently the
+// security_content detection searches with their macros expanded. Each
+// collection records its dialect, kind, source versions, and - for a derived
+// collection - the transformation and the licence in metadata.json, because a
+// query file says nothing about the version or the provenance it belongs to.
 //
-// Two properties are tested:
+// Three properties are tested:
 //
 //   - robustness: every query either parses or is refused with a positioned
 //     diagnostic. A panic, an unpositioned error, or a position outside the
 //     input is a failure, whatever the query says.
 //   - stability: the outcome (accepted, or the diagnostic code of a refusal)
 //     matches the recorded baseline, so any change in what the parser does
-//     with a documented query shows up as a reviewable diff.
+//     with a gathered query shows up as a reviewable diff.
+//   - coverage: every implemented command starts at least one stage somewhere
+//     in the collections of its dialect, so no command goes untested.
 //
-// The baseline is not a claim that the current result is right. A documented
+// The baseline is not a claim that the current result is right. A gathered
 // query the parser refuses stays refused until the parser is fixed, and fixing
 // it changes exactly one line of the baseline. Rewrite the baseline with
 //
@@ -49,6 +54,7 @@ var updateCorpus = flag.Bool("update-corpus", false,
 type corpusMeta struct {
 	Format     int            `json:"corpus_format"`
 	Dialect    string         `json:"dialect"`
+	Kind       string         `json:"kind"`
 	Source     string         `json:"source"`
 	BaseURL    string         `json:"base_url"`
 	Versions   []string       `json:"versions"`
@@ -56,6 +62,8 @@ type corpusMeta struct {
 	Queries    int            `json:"queries"`
 	PerVersion map[string]int `json:"queries_per_version"`
 	Gatherer   string         `json:"gatherer"`
+	Transform  string         `json:"transform"`
+	License    string         `json:"license"`
 	Note       string         `json:"note"`
 }
 
@@ -74,12 +82,14 @@ func TestCorpus(t *testing.T) {
 	}
 
 	dialects := map[string]bool{}
+	byDialect := map[string][]corpusQuery{}
 	total := 0
 	for _, dir := range dirs {
 		meta, queries := loadCorpus(t, dir)
 		dialects[meta.Dialect] = true
+		byDialect[meta.Dialect] = append(byDialect[meta.Dialect], queries...)
 		total += len(queries)
-		t.Run(meta.Dialect+"/"+filepath.Base(dir), func(t *testing.T) {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
 			runCorpus(t, dir, meta, queries)
 		})
 	}
@@ -88,8 +98,14 @@ func TestCorpus(t *testing.T) {
 			t.Errorf("corpus has no %s collection", want)
 		}
 	}
-	if total < 200 {
-		t.Errorf("corpus has %d queries; at least 200 are expected", total)
+	if total < 2000 {
+		t.Errorf("corpus has %d queries; at least 2000 are expected", total)
+	}
+	// Coverage is per dialect rather than per collection: a collection is one
+	// source, and a source that documents a single command should not have to
+	// repeat every other command's example.
+	for _, dialect := range []string{"spl1", "spl2"} {
+		checkCoverage(t, dialect, byDialect[dialect])
 	}
 }
 
@@ -182,6 +198,7 @@ func checkMeta(t *testing.T, dir string, meta corpusMeta) {
 	case meta.Gatherer == "":
 		t.Errorf("%s: gatherer is empty", dir)
 	}
+	checkMetaKind(t, dir, meta)
 	if meta.Queries <= 0 {
 		t.Errorf("%s: queries is %d", dir, meta.Queries)
 	}
@@ -194,6 +211,35 @@ func checkMeta(t *testing.T, dir string, meta corpusMeta) {
 			t.Errorf("%s: queries_per_version[%q] = %d, want 0..%d",
 				dir, version, count, meta.Queries)
 		}
+	}
+}
+
+// checkMetaKind enforces what a kind promises. A derived collection states how
+// the source was transformed and under what licence, and carries that licence
+// text beside the queries; a documented collection has no transformation to
+// record, so a transform or licence field there is a copy-paste error rather
+// than extra information.
+func checkMetaKind(t *testing.T, dir string, meta corpusMeta) {
+	t.Helper()
+	switch meta.Kind {
+	case "documented":
+		if meta.Transform != "" || meta.License != "" {
+			t.Errorf("%s: documented collection declares transform or license",
+				dir)
+		}
+	case "derived":
+		if meta.Transform == "" {
+			t.Errorf("%s: derived collection does not say how it was transformed",
+				dir)
+		}
+		if meta.License == "" {
+			t.Errorf("%s: derived collection does not name a licence", dir)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "LICENSE")); err != nil {
+			t.Errorf("%s: derived collection has no LICENSE: %v", dir, err)
+		}
+	default:
+		t.Errorf("%s: kind %q is not documented or derived", dir, meta.Kind)
 	}
 }
 
@@ -248,7 +294,6 @@ func runCorpus(t *testing.T, dir string, meta corpusMeta, queries []corpusQuery)
 	if *updateCorpus {
 		writeCorpus(t, dir, queries)
 	}
-	checkCoverage(t, meta, queries)
 }
 
 // corpusOutcome parses one query and describes the result as "accepted" or
@@ -328,14 +373,15 @@ var corpusCoverageExceptions = map[string]string{
 }
 
 // checkCoverage fails when an implemented command never appears as the start
-// of a stage anywhere in the collection. The corpus is the parser's broad
-// input, so a command with no corpus query is a command nothing tests.
-func checkCoverage(t *testing.T, meta corpusMeta, queries []corpusQuery) {
+// of a stage anywhere in the collections of its dialect. The corpus is the
+// parser's broad input, so a command with no corpus query is a command nothing
+// tests.
+func checkCoverage(t *testing.T, dialect string, queries []corpusQuery) {
 	t.Helper()
 
 	implemented := commands.SPL1ImplementedNames()
 	known := commands.SPL1Known
-	if meta.Dialect == "spl2" {
+	if dialect == "spl2" {
 		implemented = commands.SPL2ImplementedNames()
 		known = commands.SPL2Known
 	}
@@ -366,21 +412,21 @@ func checkCoverage(t *testing.T, meta corpusMeta, queries []corpusQuery) {
 		if counts[name] > 0 {
 			continue
 		}
-		if reason, ok := corpusCoverageExceptions[meta.Dialect+"/"+name]; ok {
-			t.Logf("%s: %-10s not covered: %s", meta.Dialect, name, reason)
+		if reason, ok := corpusCoverageExceptions[dialect+"/"+name]; ok {
+			t.Logf("%s: %-10s not covered: %s", dialect, name, reason)
 			continue
 		}
 		missing = append(missing, name)
 	}
 	if len(missing) > 0 {
 		t.Errorf("%s: implemented commands with no corpus query: %s",
-			meta.Dialect, strings.Join(missing, ", "))
+			dialect, strings.Join(missing, ", "))
 	}
 	for _, name := range implemented {
-		if _, ok := corpusCoverageExceptions[meta.Dialect+"/"+name]; ok {
+		if _, ok := corpusCoverageExceptions[dialect+"/"+name]; ok {
 			continue
 		}
-		t.Logf("%s: %-10s %d stages", meta.Dialect, name, counts[name])
+		t.Logf("%s: %-10s %d stages", dialect, name, counts[name])
 	}
 }
 
