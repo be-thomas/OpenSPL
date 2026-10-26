@@ -1,0 +1,3 @@
+FROM main
+| WHERE status == 500
+| STATS count = COUNT(*) BY `host.name`

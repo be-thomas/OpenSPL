@@ -1,0 +1,2 @@
+FROM main
+| STATS users = COUNT_DISTINCT(user) BY `host.name`

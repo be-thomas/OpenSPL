@@ -1,0 +1,6 @@
+{
+  "description": "the SPL2 subset lowers where and stats to the same IR as classic SPL",
+  "options": {
+    "spl_version": 2
+  }
+}

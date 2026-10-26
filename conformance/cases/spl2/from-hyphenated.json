@@ -1,0 +1,6 @@
+{
+  "description": "hyphens inside a dataset name stay part of one name",
+  "options": {
+    "spl_version": 2
+  }
+}

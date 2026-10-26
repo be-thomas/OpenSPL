@@ -1,0 +1,22 @@
+{
+  "description": "classic SPL is not accepted as SPL2: the pipeline must start with from",
+  "options": {
+    "spl_version": 2
+  },
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 1
+      }
+    },
+    "promql": {
+      "error": {
+        "code": "syntax",
+        "line": 1,
+        "col": 1
+      }
+    }
+  }
+}
