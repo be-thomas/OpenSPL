@@ -24,6 +24,9 @@ control every field, index, and label.
     "web": "logs-web-*",
     "security": "logs-auth-*"
   },
+  "datamodels": {
+    "Endpoint.Processes": "logs-endpoint-processes-*"
+  },
   "prometheus": {
     "metric": "splunk_events_total",
     "index_label": "job",
@@ -51,6 +54,7 @@ instead of silently falling back to a default.
 | `text_field` | yes | `message` | Target field for `_raw` and free-text search |
 | `fields` | no | ECS subset | Splunk field → target field |
 | `indexes` | no | empty | Splunk index → Elasticsearch index pattern |
+| `datamodels` | no | empty | Splunk data-model name → Elasticsearch index pattern (used by `tstats`) |
 | `prometheus.metric` | yes | `splunk_events_total` | Metric selector for PromQL |
 | `prometheus.index_label` | no | `job` | Label that receives the Splunk index |
 | `prometheus.function` | yes | `increase` | `increase` or `rate` |
@@ -129,6 +133,35 @@ replaying a saved search against a different cluster:
 ```bash
 openspl transpile --index 'logs-web-prod-*' -f savedsearch.spl
 ```
+
+## Data models
+
+`tstats` names a Splunk data model, not an index, and the two are unrelated
+namespaces: `datamodel=Endpoint.Processes` says nothing about where those
+events are stored in Elasticsearch. The `datamodels` map supplies that.
+
+```text
+datamodel=Endpoint.Processes
+  ──► datamodels["Endpoint.Processes"] ──► FROM logs-endpoint-processes-*
+```
+
+Resolution order for the `FROM` value:
+
+1. `--index`, if given;
+2. an `index=` filter inside the `tstats` `WHERE` clause, resolved through
+   `indexes`;
+3. `datamodels[<name>]`;
+4. `default_index`.
+
+A data-model name that is absent, or mapped to the empty string, is not a
+mapping: OpenSPL falls back to `default_index` and warns with
+`tstats-datamodel`. Map every data model you search to avoid that fallback.
+
+Data-model field references keep their dataset prefix — `Processes.dest` — in
+the IR. The ES\|QL emitter strips the prefix to `dest` and then applies
+`fields`, so one mapping serves both data-model and plain searches. Stripping
+is lossy in general (a leaf name can collide across datasets), so it always
+carries a `tstats-field-prefix` warning.
 
 ## Prometheus labels
 

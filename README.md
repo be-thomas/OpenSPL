@@ -168,8 +168,9 @@ openspl transpile --strict -f savedsearch.spl
 |---|---|---|---|
 | `search` / implicit search | ✅ | ⚠️ | Free text becomes `MATCH`; PromQL needs explicit fields |
 | `where` | ✅ | ⚠️ | Full expression pushdown to `WHERE` |
-| `stats` | ✅ | ⚠️ | `count`, `dc`, `sum`, `avg`, `min`, `max`; PromQL: `count` only |
+| `stats` | ✅ | ⚠️ | `count`, `dc`, `sum`, `avg`, `min`, `max`, `values`, `earliest`, `latest`; PromQL: `count` only |
 | `timechart` | ✅ | ✅ | Time bucket → `BUCKET` or `increase(...[span])` |
+| `tstats` | ⚠️ | ⛔ | Data-model aggregation; resolves through `datamodels` in the mapping and drops data-model field prefixes with a warning |
 | `eval` | ✅ | ⛔ | Arithmetic, comparisons, common functions |
 | `rex` | ⚠️ | ⛔ | Regex → Grok; always warns |
 | `table` | ✅ | ⛔ | `KEEP` |
@@ -214,22 +215,30 @@ override.
 
 | Collection | Queries | → IR | SPL→IR | → ES\|QL | SPL→ES\|QL | IR→ES\|QL | → PromQL | SPL→PromQL | IR→PromQL |
 |---|---|---|---|---|---|---|---|---|---|
-| `spl1` | 549 | 71 | 12.9% | 61 | 11.1% | 85.9% | 6 | 1.1% | 8.5% |
-| `spl1-detections` | 2,171 | 24 | 1.1% | 11 | 0.5% | 45.8% | 0 | 0.0% | 0.0% |
+| `spl1` | 549 | 88 | 16.0% | 80 | 14.6% | 90.9% | 6 | 1.1% | 6.8% |
+| `spl1-detections` | 2,171 | 591 | 27.2% | 589 | 27.1% | 99.7% | 0 | 0.0% | 0.0% |
 | `spl2` | 92 | 0 | 0.0% | 0 | 0.0% | — | 0 | 0.0% | — |
-| **Total** | **2,812** | **95** | **3.4%** | **72** | **2.6%** | **75.8%** | **6** | **0.2%** | **6.3%** |
+| **Total** | **2,812** | **679** | **24.1%** | **669** | **23.8%** | **98.5%** | **6** | **0.2%** | **0.9%** |
 
-95 of 2,812 queries (3.4%) parse to the IR, 72 (2.6%) compile end-to-end to
-ES\|QL, and 6 (0.2%) to PromQL. The low SPL1 detection figure is parser
-coverage, not emitter coverage — `tstats` alone accounts for 1,022 of the
-refusals. Where a query does parse, ES\|QL emits for 75.8% and PromQL for 6.3%.
+679 of 2,812 queries (24.1%) parse to the IR, 669 (23.8%) compile end-to-end to
+ES\|QL, and 6 (0.2%) to PromQL. Where a query does parse, ES\|QL emits for
+98.5% and PromQL for 0.9%.
 
-The 89 PromQL refusals are deliberate. The largest single cause is
-`promql-no-aggregation` (21): the pipeline does not end in an aggregation, so
-it produces rows rather than a time series. Another 44 use a stage with no
-PromQL form — `eval` 18, `table` 10, `rex` 7, `rename` 6, `fields` 2, `bin` 1 —
-and 16 combine or name an aggregation PromQL cannot express. The remaining 8
-are refused over ordering, free-text terms, or row filters.
+The remaining parser refusals are commands and value syntax the front-end does
+not implement yet — `IN (...)` value lists, `fillnull`, `bucket`, `spath`,
+`mstats`, `transaction`, `chart`, `lookup`, `metadata`, and `top`, plus hex
+literals and free-text runs such as `*GetCurrent()*`.
+
+The 10 ES\|QL refusals are aggregations and spans with no verified translation:
+`range`, `per_day`/`per_hour`/`per_minute`, and `first`/`last` (6), regexes
+with no named capture (2), one timechart span with a week alignment, and one
+`tstats` placed after another stage.
+
+The 673 PromQL refusals are deliberate. The largest cause is a stage with no
+PromQL form (628): `tstats` 584, `eval` 18, `table` 10, `rex` 7, `rename` 6,
+`fields` 2, `bin` 1. Another 21 do not end in an aggregation, 16 combine or
+name an aggregation PromQL cannot express, and 8 are refused over ordering,
+free-text terms, or row filters.
 
 Regenerate with `make corpus-report`; it prints this table from the corpus.
 
