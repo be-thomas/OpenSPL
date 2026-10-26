@@ -100,7 +100,9 @@ run_case() {
 			bad "$name: engine rejected the query"
 			return
 		fi
-		if grep -q '"error"' "$outfile"; then
+		# Check the top-level field, not the raw text: a row value can be the
+		# word "error" (for example an eval result) without the engine failing.
+		if ! python3 -c 'import json,sys; sys.exit("error" in json.load(open(sys.argv[1])))' "$outfile"; then
 			bad "$name: engine returned an error"
 			cat "$outfile"
 			return
@@ -112,7 +114,7 @@ run_case() {
 			bad "$name: engine rejected the query"
 			return
 		fi
-		if ! grep -q '"status":"success"' "$outfile"; then
+		if ! python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1])).get("status") != "success")' "$outfile"; then
 			bad "$name: engine returned an error"
 			cat "$outfile"
 			return
