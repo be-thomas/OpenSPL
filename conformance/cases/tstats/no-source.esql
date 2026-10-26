@@ -1,0 +1,2 @@
+FROM logs-*
+| STATS count = COUNT(*) BY `host.name`

@@ -1,0 +1,2 @@
+FROM logs-endpoint-processes-*
+| STATS count = COUNT(*), firstSeen = EARLIEST(`@timestamp`), lastSeen = LATEST(`@timestamp`), firstTime = MIN(`@timestamp`), lastTime = MAX(`@timestamp`), process_names = VALUES(process_name), hosts = COUNT_DISTINCT(`destination.address`) BY `destination.address`

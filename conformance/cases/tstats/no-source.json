@@ -1,0 +1,3 @@
+{
+  "description": "a data-model aggregation with neither a data model nor an index filter searches the default index"
+}

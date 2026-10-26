@@ -1,0 +1,1 @@
+tstats summariesonly=false allow_old_summaries=true fillnull_value=null count earliest(_time) as firstSeen latest(_time) as lastSeen min(_time) as firstTime max(_time) as lastTime values(Processes.process_name) as process_names dc(Processes.dest) as hosts FROM datamodel=Endpoint.Processes BY Processes.dest

@@ -1,0 +1,1 @@
+tstats chunk_size=1000 count FROM datamodel=Web

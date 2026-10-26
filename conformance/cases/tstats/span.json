@@ -1,0 +1,16 @@
+{
+  "description": "a span on _time becomes BUCKET on the timestamp field",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 50
+        }
+      ]
+    }
+  }
+}

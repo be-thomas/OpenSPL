@@ -1,0 +1,22 @@
+{
+  "description": "a span without _time in the BY list is ignored with a warning",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 36
+        },
+        {
+          "code": "tstats-span",
+          "severity": "warning",
+          "line": 1,
+          "col": 44
+        }
+      ]
+    }
+  }
+}

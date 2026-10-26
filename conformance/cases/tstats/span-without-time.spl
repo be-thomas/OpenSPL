@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Web BY Web.src span=5m

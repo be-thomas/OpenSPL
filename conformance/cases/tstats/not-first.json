@@ -1,0 +1,13 @@
+{
+  "description": "tstats reads a data model, so it cannot follow another stage",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "error": {
+        "code": "tstats-position",
+        "line": 1,
+        "col": 13
+      }
+    }
+  }
+}

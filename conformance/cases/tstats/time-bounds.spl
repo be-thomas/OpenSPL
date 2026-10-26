@@ -1,0 +1,1 @@
+tstats count FROM datamodel=Web WHERE earliest=-7d Web.status=500 BY Web.src

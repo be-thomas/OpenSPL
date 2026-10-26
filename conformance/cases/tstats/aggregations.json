@@ -1,0 +1,22 @@
+{
+  "description": "acceleration options are ignored with an info diagnostic; earliest, latest, values, and dc become ES|QL aggregations",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-option",
+          "severity": "info",
+          "line": 1,
+          "col": 1
+        },
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 188
+        }
+      ]
+    }
+  }
+}

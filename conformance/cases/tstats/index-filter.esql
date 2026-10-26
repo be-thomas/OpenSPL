@@ -1,0 +1,3 @@
+FROM legacy
+| WHERE status == 500
+| STATS count = COUNT(*) BY `source.address`

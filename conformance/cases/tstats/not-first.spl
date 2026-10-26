@@ -1,0 +1,1 @@
+index=web | tstats count FROM datamodel=Web

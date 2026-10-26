@@ -1,0 +1,3 @@
+FROM logs-web-*
+| WHERE status == 500
+| STATS count = COUNT(*) BY `source.address`, `destination.address`

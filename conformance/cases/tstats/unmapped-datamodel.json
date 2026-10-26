@@ -1,0 +1,22 @@
+{
+  "description": "an unmapped data model falls back to the default index with a warning",
+  "mapping": "../../fixtures/mappings/tstats.json",
+  "targets": {
+    "esql": {
+      "diagnostics": [
+        {
+          "code": "tstats-datamodel",
+          "severity": "warning",
+          "line": 1,
+          "col": 29
+        },
+        {
+          "code": "tstats-field-prefix",
+          "severity": "warning",
+          "line": 1,
+          "col": 42
+        }
+      ]
+    }
+  }
+}
