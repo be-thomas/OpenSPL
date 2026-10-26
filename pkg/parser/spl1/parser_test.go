@@ -313,6 +313,22 @@ func TestNotAtExpressionStartIsNegation(t *testing.T) {
 		}
 	})
 
+	t.Run("assignment value negates a wildcard", func(t *testing.T) {
+		p := mustParse(t, `eval y=not * b`)
+		e := p.Stages[0].(*ast.EvalStage)
+		and, ok := e.Assignments[0].Expr.(*ast.BinaryExpr)
+		if !ok || and.Op != "and" {
+			t.Fatalf("expr = %#v, want NOT TRUE AND b", e.Assignments[0].Expr)
+		}
+		u, ok := and.Left.(*ast.UnaryExpr)
+		if !ok || u.Op != "not" {
+			t.Fatalf("left = %#v, want a negation", and.Left)
+		}
+		if _, ok := u.Operand.(*ast.WildcardLit); !ok {
+			t.Fatalf("operand = %#v, want the wildcard", u.Operand)
+		}
+	})
+
 	t.Run("leading eval keeps a field after an operator", func(t *testing.T) {
 		p := mustParse(t, `eval x=1+not`)
 		e := p.Stages[0].(*ast.EvalStage)
@@ -674,6 +690,179 @@ func TestParseErrors(t *testing.T) {
 			}
 			if ds[0].Pos.Line < 1 || ds[0].Pos.Col < 1 {
 				t.Errorf("diagnostic has no position: %#v", ds[0])
+			}
+		})
+	}
+}
+
+// TestValuePositionStarMultiplies pins the star in value position. The driver
+// retypes a star that touches the preceding word as STAR_TERM so `a*` stays one
+// search term, but in an expression the same spelling is multiplication.
+func TestValuePositionStarMultiplies(t *testing.T) {
+	t.Run("eval assignment", func(t *testing.T) {
+		p := mustParse(t, `eval x=a*b`)
+		e := p.Stages[0].(*ast.EvalStage)
+		b, ok := e.Assignments[0].Expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "*" {
+			t.Fatalf("expr = %#v, want multiplication", e.Assignments[0].Expr)
+		}
+		if f, ok := b.Left.(*ast.FieldRef); !ok || f.Name != "a" {
+			t.Fatalf("left = %#v, want FieldRef a", b.Left)
+		}
+		if f, ok := b.Right.(*ast.FieldRef); !ok || f.Name != "b" {
+			t.Fatalf("right = %#v, want FieldRef b", b.Right)
+		}
+	})
+
+	t.Run("comparison left operand", func(t *testing.T) {
+		p := mustParse(t, `where a*b>2`)
+		cmp, ok := p.Stages[0].(*ast.SearchStage).Expr.(*ast.BinaryExpr)
+		if !ok || cmp.Op != ">" {
+			t.Fatalf("expr = %#v, want a comparison", p.Stages[0].(*ast.SearchStage).Expr)
+		}
+		if b, ok := cmp.Left.(*ast.BinaryExpr); !ok || b.Op != "*" {
+			t.Fatalf("left = %#v, want a product", cmp.Left)
+		}
+	})
+
+	t.Run("aggregate argument", func(t *testing.T) {
+		p := mustParse(t, `stats sum(a*b)`)
+		s := p.Stages[0].(*ast.StatsStage)
+		if b, ok := s.Aggs[0].Arg.(*ast.BinaryExpr); !ok || b.Op != "*" {
+			t.Fatalf("arg = %#v, want a product", s.Aggs[0].Arg)
+		}
+	})
+
+	t.Run("left associativity", func(t *testing.T) {
+		p := mustParse(t, `eval pct=count/total*100`)
+		e := p.Stages[0].(*ast.EvalStage)
+		b, ok := e.Assignments[0].Expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "*" {
+			t.Fatalf("expr = %#v, want (count/total)*100", e.Assignments[0].Expr)
+		}
+		if div, ok := b.Left.(*ast.BinaryExpr); !ok || div.Op != "/" {
+			t.Fatalf("left = %#v, want a division", b.Left)
+		}
+	})
+}
+
+// TestStarAfterOperandIsMultiplication covers the operator role on the other
+// side: a star with an operand to its left is a multiplication operator, so the
+// star after it is that product's right operand (a wildcard), not the start of
+// an implicit-AND term.
+func TestStarAfterOperandIsMultiplication(t *testing.T) {
+	t.Run("wildcard operand", func(t *testing.T) {
+		p := mustParse(t, `a * * | stats count`)
+		expr := p.Stages[0].(*ast.SearchStage).Expr
+		b, ok := expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "*" {
+			t.Fatalf("expr = %#v, want multiplication", expr)
+		}
+		if _, ok := b.Left.(*ast.SearchTerm); !ok {
+			t.Fatalf("left = %#v, want the search term a", b.Left)
+		}
+		if _, ok := b.Right.(*ast.WildcardLit); !ok {
+			t.Fatalf("right = %#v, want the wildcard", b.Right)
+		}
+	})
+
+	t.Run("field operand", func(t *testing.T) {
+		p := mustParse(t, `where a * not`)
+		b, ok := p.Stages[0].(*ast.SearchStage).Expr.(*ast.BinaryExpr)
+		if !ok || b.Op != "*" {
+			t.Fatalf("expr = %#v, want multiplication", p.Stages[0].(*ast.SearchStage).Expr)
+		}
+		if f, ok := b.Right.(*ast.FieldRef); !ok || f.Name != "not" {
+			t.Fatalf("right = %#v, want FieldRef not", b.Right)
+		}
+	})
+}
+
+// TestStarNeedsAValueAfterTheOperator checks where the parser stops when a
+// multiplication star has no operand: at the token that cannot begin one, in
+// both term position and value position.
+func TestStarNeedsAValueAfterTheOperator(t *testing.T) {
+	tests := []struct {
+		src  string
+		line int
+		col  int
+	}{
+		{`a * * *`, 1, 8},
+		{`a * * * | stats count`, 1, 9},
+		{`where * *`, 1, 10},
+		{`where (a*)`, 1, 10},
+		{`where (a * )`, 1, 12},
+		{`stats sum(a*)`, 1, 13},
+		{`stats sum(a * )`, 1, 15},
+		{`where * not`, 1, 12},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			_, err := Parse(tc.src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != "syntax" || d.Pos.Line != tc.line || d.Pos.Col != tc.col {
+				t.Fatalf("diagnostic = %#v, want syntax at %d:%d", d, tc.line, tc.col)
+			}
+		})
+	}
+}
+
+// TestSortSignOnAKeywordField covers `sort` with a sign before a word that is
+// otherwise the limit keyword or the negation keyword: the sign rules the
+// keyword reading out, so the word is a field name.
+func TestSortSignOnAKeywordField(t *testing.T) {
+	tests := []struct {
+		src  string
+		name string
+		desc bool
+	}{
+		{`head 5 | sort -limit`, "limit", true},
+		{`head 5 | sort +limit`, "limit", false},
+		{`head 5 | sort -not`, "not", true},
+		{`head 5 | sort -limit, +host`, "limit", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.src, func(t *testing.T) {
+			p := mustParse(t, tc.src)
+			s, ok := p.Stages[len(p.Stages)-1].(*ast.SortStage)
+			if !ok || len(s.Fields) == 0 {
+				t.Fatalf("last stage = %#v, want a sort field", p.Stages[len(p.Stages)-1])
+			}
+			if s.Fields[0].Name != tc.name || s.Fields[0].Desc != tc.desc {
+				t.Fatalf("field = %#v, want %s desc=%v", s.Fields[0], tc.name, tc.desc)
+			}
+		})
+	}
+}
+
+// TestBinRejectsSecondField covers the single-field rule: the second field is
+// refused at its own token, before any later argument error can be reported.
+func TestBinRejectsSecondField(t *testing.T) {
+	const want = `bin accepts exactly one field; found "b" after "a"`
+	tests := []string{`bin a b(`, `bin a b +`, `bin a b span=1h x(`, `bin a b where x ==`}
+	for _, src := range tests {
+		t.Run(src, func(t *testing.T) {
+			_, err := Parse(src)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			ds, ok := diag.FromError(err)
+			if !ok || len(ds) != 1 {
+				t.Fatalf("err = %v, want one diagnostic", err)
+			}
+			d := ds[0]
+			if d.Code != "syntax" || d.Pos.Line != 1 || d.Pos.Col != 7 {
+				t.Fatalf("diagnostic = %#v, want syntax at 1:7", d)
+			}
+			if d.Message != want {
+				t.Fatalf("message = %q, want %q", d.Message, want)
 			}
 		})
 	}

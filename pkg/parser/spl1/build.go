@@ -365,6 +365,16 @@ func (b *builder) sortFirstItem(ctx spl1gen.ISortFirstItemContext) (*ast.SortFie
 	if ctx.COMMA() != nil {
 		return nil, nil
 	}
+	// A sign rules out the `limit` keyword reading, so `sort -limit` is a
+	// descending sort on a field named `limit` and lands in the sign
+	// alternative rather than in sortField.
+	if word := ctx.IdentLike(); word != nil {
+		tok := word.GetStart()
+		return &ast.SortField{
+			Name: tok.GetText(),
+			Desc: ctx.Sign() != nil && ctx.Sign().Minus() != nil,
+		}, nil
+	}
 	return b.sortField(ctx.SortField(), ctx.Sign()), nil
 }
 
@@ -407,6 +417,9 @@ func (b *builder) nonNegativeInt(tok antlr.Token, what string) (int, error) {
 	return n, nil
 }
 
+// bin lowers the items the grammar accepted. The single-field rule is enforced
+// by the grammar itself (binFieldSeen), so a second field has already been
+// refused at its own token by the time this runs.
 func (b *builder) bin(cmd antlr.Token, items []spl1gen.IBinItemContext) (ast.Stage, error) {
 	field, span := "", ""
 	for _, item := range items {
@@ -414,12 +427,7 @@ func (b *builder) bin(cmd antlr.Token, items []spl1gen.IBinItemContext) (ast.Sta
 		case *spl1gen.BinSpanItemContext:
 			span = b.spanValue(c.SpanAssign().SpanValue())
 		case *spl1gen.BinFieldItemContext:
-			tok := c.BinField().IdentLikeNotSpan().GetStart()
-			if field != "" {
-				return nil, diag.NewError(b.pos(tok), "syntax",
-					"bin accepts exactly one field; found %q after %q", tok.GetText(), field)
-			}
-			field = tok.GetText()
+			field = c.BinField().IdentLikeNotSpan().GetStart().GetText()
 		}
 	}
 	if field == "" {
@@ -968,7 +976,12 @@ func additiveOperator(t int) string {
 
 func multiplicativeOperator(t int) string {
 	switch t {
-	case spl1gen.SPL1ParserSTAR, spl1gen.SPL1ParserSTAR_TIGHT:
+	// STAR_TERM is a multiplication operator in value position: the driver
+	// retypes every star that touches the preceding word, and `eval x=a*b`
+	// multiplies even though the star is glued to `a`. Only the term rules
+	// treat that spelling as part of a search term.
+	case spl1gen.SPL1ParserSTAR, spl1gen.SPL1ParserSTAR_TIGHT,
+		spl1gen.SPL1ParserSTAR_TERM, spl1gen.SPL1ParserSTAR_OP:
 		return "*"
 	case spl1gen.SPL1ParserSLASH:
 		return "/"

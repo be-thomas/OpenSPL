@@ -295,6 +295,10 @@ func (v *BaseSPL1Visitor) VisitComparisonOp(ctx *ComparisonOpContext) interface{
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSPL1Visitor) VisitOperandStar(ctx *OperandStarContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSPL1Visitor) VisitStar(ctx *StarContext) interface{} {
 	return v.VisitChildren(ctx)
 }

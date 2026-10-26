@@ -37,7 +37,7 @@ grammar SPL1;
 // not lexer rules: the lexer emits the ordinary token, and the retyping is a
 // token-stream pass, because the decision depends on the surrounding tokens,
 // past the end of the token the lexer is matching.
-tokens { NUMBER_TIGHT, STAR_TIGHT, MINUS_TIGHT, STAR_TERM, NOT_WORD }
+tokens { NUMBER_TIGHT, STAR_TIGHT, MINUS_TIGHT, STAR_TERM, STAR_OP, NOT_WORD }
 
 @parser::members {
 // la returns the token type at lookahead k.
@@ -91,12 +91,39 @@ func (p *SPL1Parser) startsTerm() bool {
 	switch t {
 	case SPL1ParserAND, SPL1ParserOR, SPL1ParserBY, SPL1ParserAS:
 		return false
+	case SPL1ParserSTAR_OP:
+		// A star with an operand on its left multiplies; it never starts an
+		// implicit-AND term.
+		return false
+	case SPL1ParserSTAR, SPL1ParserSTAR_TIGHT, SPL1ParserSTAR_TERM:
+		// After a completed operand a star multiplies; it starts a new
+		// implicit-AND term only where no operand precedes it (`where * a`).
+		// Without this, `where (a*)` parses as `a AND TRUE` instead of
+		// reporting the missing operand after the star.
+		return !p.prevEndsOperand()
 	case SPL1ParserSTRING, SPL1ParserNUMBER, SPL1ParserNUMBER_TIGHT,
-		SPL1ParserDURATION, SPL1ParserLPAREN, SPL1ParserLBRACKET,
-		SPL1ParserSTAR, SPL1ParserSTAR_TIGHT, SPL1ParserSTAR_TERM:
+		SPL1ParserDURATION, SPL1ParserLPAREN, SPL1ParserLBRACKET:
 		return true
 	}
 	return p.isIdentLike(t)
+}
+
+// prevEndsOperand reports whether the last consumed token can end an operand,
+// so a following star is a multiplication operator. The token stream is the
+// tight one, so a retyped star still reads as a star.
+func (p *SPL1Parser) prevEndsOperand() bool {
+	prev := p.tok(-1)
+	if prev == nil {
+		return false
+	}
+	switch t := prev.GetTokenType(); t {
+	case SPL1ParserSTRING, SPL1ParserNUMBER, SPL1ParserNUMBER_TIGHT,
+		SPL1ParserDURATION, SPL1ParserRPAREN, SPL1ParserRBRACKET,
+		SPL1ParserSTAR, SPL1ParserSTAR_TIGHT, SPL1ParserSTAR_TERM:
+		return true
+	default:
+		return p.isIdentLike(t)
+	}
 }
 
 // isStar, isNumber, and isMinus accept every spelling of a token, wherever the
@@ -139,7 +166,8 @@ func (p *SPL1Parser) atAdd() bool {
 
 func (p *SPL1Parser) atMul() bool {
 	t := p.la(1)
-	return p.isStar(t) || t == SPL1ParserSLASH || t == SPL1ParserPERCENT
+	return t == SPL1ParserSTAR_OP || p.isStar(t) ||
+		t == SPL1ParserSLASH || t == SPL1ParserPERCENT
 }
 
 // atSearchMul is atMul for term position, where an adjacent STAR is part of
@@ -147,6 +175,7 @@ func (p *SPL1Parser) atMul() bool {
 func (p *SPL1Parser) atSearchMul() bool {
 	t := p.la(1)
 	return t == SPL1ParserSTAR || t == SPL1ParserSTAR_TIGHT ||
+		t == SPL1ParserSTAR_OP ||
 		t == SPL1ParserSLASH || t == SPL1ParserPERCENT
 }
 
@@ -173,6 +202,31 @@ func (p *SPL1Parser) abortMissingOperand() {
 		message = "expected an expression, found " + fmt.Sprintf("%q", t.GetText())
 	}
 	panic(parseAbort{token: t, code: "syntax", message: message})
+}
+
+// binFieldSeen refuses a second `bin` field at that field's token, before the
+// rest of the stage is parsed. The hand parser reports the extra field in
+// source order, so a later grammar error must not be able to overtake it. The
+// completed siblings live in the enclosing command context's children.
+func (p *SPL1Parser) binFieldSeen() {
+	t := p.tok(-1)
+	cur := p.GetParserRuleContext()
+	parent := cur.GetParent()
+	if t == nil || parent == nil {
+		return
+	}
+	for _, child := range parent.GetChildren() {
+		prev, ok := child.(*BinFieldItemContext)
+		if !ok || prev == cur {
+			continue
+		}
+		panic(parseAbort{
+			token: t,
+			code:  "syntax",
+			message: fmt.Sprintf("bin accepts exactly one field; found %q after %q",
+				t.GetText(), prev.BinField().GetStart().GetText()),
+		})
+	}
 }
 
 // abortSubsearch refuses a subsearch at its opening bracket, before the rest of
@@ -351,7 +405,7 @@ searchPrimary
   | number                                  #SPrimNumber
   | DURATION                                #SPrimDuration
   | {p.termStarRun()}? star searchTermTail+ #SPrimStarRun
-  | star                                    #SPrimStar
+  | operandStar                             #SPrimStar
   | subsearch                               #SPrimSubsearch
   ;
 
@@ -426,7 +480,7 @@ valuePrimary
   | STRING                                  #VPrimString
   | number                                  #VPrimNumber
   | DURATION                                #VPrimDuration
-  | star                                    #VPrimStar
+  | operandStar                             #VPrimStar
   | subsearch                               #VPrimSubsearch
   ;
 
@@ -451,7 +505,13 @@ comparisonOp : EQ2 | EQ | NE | LT | LE | GT | GE ;
 // driver retypes only the ones that begin a value run. Every rule below them
 // is shared by the value-run and expression reads, and none of them changes
 // meaning with the tightness.
-star  : STAR | STAR_TIGHT | STAR_TERM ;
+//
+// STAR_OP is a star the driver retyped because an operand precedes it, so it
+// can only be a multiplication operator. Operand positions use operandStar, so
+// prediction cannot read a multiplication as the start of an implicit-AND term
+// (`a * * | ...`); field lists keep accepting every spelling.
+operandStar : STAR | STAR_TIGHT | STAR_TERM ;
+star  : operandStar | STAR_OP ;
 minus : MINUS | MINUS_TIGHT ;
 number : NUMBER | NUMBER_TIGHT ;
 
@@ -459,7 +519,7 @@ addOp : PLUS | minus ;
 mulOp : star | SLASH | PERCENT ;
 // Term-position multiplication excludes STAR_TERM: there the star already
 // belongs to the preceding term.
-searchMulOp : STAR | STAR_TIGHT | SLASH | PERCENT ;
+searchMulOp : STAR | STAR_TIGHT | STAR_OP | SLASH | PERCENT ;
 sign : minus | PLUS ;
 
 // --- identifiers and command bodies --------------------------------------
@@ -568,9 +628,12 @@ sortItem
 
 // `limit` is the keyword only in the first body position; after a limit or a
 // field it is an ordinary field name, so only the first item excludes it.
+// A sign rules the limit reading out, so `sort -limit` is a descending sort on
+// a field named `limit` and `sort -not` on the retyped NOT_WORD.
 sortFirstItem
   : COMMA
-  | sign? sortField
+  | sign identLike
+  | sortField
   ;
 
 sortField
@@ -588,7 +651,7 @@ limitTail
 
 binItem
   : {p.at(SPL1ParserSPAN)}? SPAN spanAssign  #BinSpanItem
-  | binField                                 #BinFieldItem
+  | binField {p.binFieldSeen()}              #BinFieldItem
   ;
 
 // `span` is always the keyword inside `bin`, so it is not a field name here.
@@ -605,7 +668,7 @@ identLikeNotSpan
 // `limit` excluded: `sort limit` starts the limit argument, never a field.
 identLikeNotLimit
   : IDENT | SEARCH | WHERE | STATS | TIMECHART | EVAL | REX | TABLE | FIELDS
-  | SORT | HEAD | BIN | BY | AS | SPAN | FIELD | AND | OR | NOT
+  | SORT | HEAD | BIN | BY | AS | SPAN | FIELD | AND | OR | NOT | NOT_WORD
   ;
 
 // --- lexer ---------------------------------------------------------------

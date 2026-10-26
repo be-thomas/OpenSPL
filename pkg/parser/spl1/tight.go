@@ -94,7 +94,7 @@ func tightTokenTypes(toks []antlr.Token) map[int]int {
 			continue
 		}
 		prev := tokenAt(toks, i-1)
-		if prev == nil || !isOperandOperator(prev.GetTokenType()) {
+		if prev == nil || !notFollowsOperator(toks, i-1, assignments) {
 			continue
 		}
 		// An assignment's '=' starts an expression, so `eval x=not` is the
@@ -118,6 +118,30 @@ func tightTokenTypes(toks []antlr.Token) map[int]int {
 		if isIdentLikeToken(prevType) || types[prev.GetTokenIndex()] == spl1gen.SPL1ParserSTAR_TERM {
 			types[t.GetTokenIndex()] = spl1gen.SPL1ParserSTAR_TERM
 		}
+	}
+
+	// A star with an operand on its left can only multiply, never begin a
+	// term, and the grammar says so with its own token type. A predicate
+	// cannot: SLL prediction simulates the implicit-AND alternative whenever
+	// both start with a star, and ignores the predicate. Two stars in a row
+	// alternate roles, and the alternation differs between term position and
+	// value position, so a star that follows a star keeps its plain type and
+	// the grammar's own loops decide (`a * *` is `a * TRUE`).
+	for i, t := range toks {
+		if t.GetTokenType() != spl1gen.SPL1ParserSTAR {
+			continue
+		}
+		if _, ok := types[t.GetTokenIndex()]; ok {
+			continue
+		}
+		if !starHasLeftOperand(toks, i, assignments) {
+			continue
+		}
+		if prev := tokenAt(toks, i-1); prev != nil &&
+			prev.GetTokenType() == spl1gen.SPL1ParserSTAR {
+			continue
+		}
+		types[t.GetTokenIndex()] = spl1gen.SPL1ParserSTAR_OP
 	}
 
 	for i, t := range toks {
@@ -208,11 +232,17 @@ func evalAssignmentEquals(toks []antlr.Token) map[int]bool {
 	return eqs
 }
 
-// isOperandOperator reports whether t is an arithmetic or comparison operator,
-// after which a `not` is a field name rather than the negation keyword.
-func isOperandOperator(t int) bool {
-	switch t {
-	case spl1gen.SPL1ParserPLUS, spl1gen.SPL1ParserMINUS, spl1gen.SPL1ParserSTAR,
+// notFollowsOperator reports whether the token at index j puts a following
+// `not` in field position, as opposed to the start of an expression where it is
+// the negation keyword.
+func notFollowsOperator(toks []antlr.Token, j int, assignments map[int]bool) bool {
+	switch t := toks[j].GetTokenType(); t {
+	case spl1gen.SPL1ParserSTAR:
+		// A star only multiplies when it has a left operand. `where a * not`
+		// reads `not` as a field, while `where * not` is a wildcard term
+		// followed by the negation keyword.
+		return starHasLeftOperand(toks, j, assignments)
+	case spl1gen.SPL1ParserPLUS, spl1gen.SPL1ParserMINUS,
 		spl1gen.SPL1ParserSLASH, spl1gen.SPL1ParserPERCENT,
 		spl1gen.SPL1ParserEQ2, spl1gen.SPL1ParserEQ, spl1gen.SPL1ParserNE,
 		spl1gen.SPL1ParserLT, spl1gen.SPL1ParserLE, spl1gen.SPL1ParserGT,
@@ -220,6 +250,78 @@ func isOperandOperator(t int) bool {
 		return true
 	}
 	return false
+}
+
+// starHasLeftOperand reports whether the star at index j multiplies an operand
+// to its left rather than starting an expression. A star after a completed
+// operand is multiplication; a star after a command keyword that starts the
+// stage, or after an operator or `(`, begins a wildcard term.
+func starHasLeftOperand(toks []antlr.Token, j int, assignments map[int]bool) bool {
+	prev := tokenAt(toks, j-1)
+	if prev == nil {
+		return false
+	}
+	t := prev.GetTokenType()
+	switch {
+	case t == spl1gen.SPL1ParserNOT:
+		// `not` is the negation keyword where an expression starts and a
+		// field name only after an arithmetic or comparison operator. An
+		// assignment's '=' starts an expression, so it does not make the
+		// `not` a field: `eval y=not * b` negates the wildcard.
+		before := tokenAt(toks, j-2)
+		if before == nil || !isArithmeticOrComparison(before.GetTokenType()) {
+			return false
+		}
+		return !(before.GetTokenType() == spl1gen.SPL1ParserEQ &&
+			assignments[before.GetTokenIndex()])
+	case isIdentLikeToken(t):
+		// A command keyword at the start of a stage is the command itself,
+		// not a field: `where * not` starts with a wildcard term.
+		return !(isCommandKeyword(t) && isStageStart(toks, j-1))
+	case t == spl1gen.SPL1ParserSTRING || t == spl1gen.SPL1ParserNUMBER ||
+		t == spl1gen.SPL1ParserDURATION || t == spl1gen.SPL1ParserRPAREN ||
+		t == spl1gen.SPL1ParserRBRACKET || t == spl1gen.SPL1ParserSTAR:
+		return true
+	}
+	return false
+}
+
+// isArithmeticOrComparison reports whether t is an operator whose right operand
+// is a primary, so a following `not` is a field name there.
+func isArithmeticOrComparison(t int) bool {
+	switch t {
+	case spl1gen.SPL1ParserPLUS, spl1gen.SPL1ParserMINUS,
+		spl1gen.SPL1ParserSLASH, spl1gen.SPL1ParserPERCENT,
+		spl1gen.SPL1ParserEQ2, spl1gen.SPL1ParserEQ, spl1gen.SPL1ParserNE,
+		spl1gen.SPL1ParserLT, spl1gen.SPL1ParserLE, spl1gen.SPL1ParserGT,
+		spl1gen.SPL1ParserGE:
+		return true
+	}
+	return false
+}
+
+// isCommandKeyword reports whether t names a command the grammar implements.
+func isCommandKeyword(t int) bool {
+	switch t {
+	case spl1gen.SPL1ParserSEARCH, spl1gen.SPL1ParserWHERE,
+		spl1gen.SPL1ParserSTATS, spl1gen.SPL1ParserTIMECHART,
+		spl1gen.SPL1ParserEVAL, spl1gen.SPL1ParserREX,
+		spl1gen.SPL1ParserTABLE, spl1gen.SPL1ParserFIELDS,
+		spl1gen.SPL1ParserSORT, spl1gen.SPL1ParserHEAD,
+		spl1gen.SPL1ParserBIN:
+		return true
+	}
+	return false
+}
+
+// isStageStart reports whether index j begins a stage: the first token of the
+// query, or the first token after a pipe.
+func isStageStart(toks []antlr.Token, j int) bool {
+	if j == 0 {
+		return true
+	}
+	prev := tokenAt(toks, j-1)
+	return prev != nil && prev.GetTokenType() == spl1gen.SPL1ParserPIPE
 }
 
 func isStarOrMinus(t int) bool {

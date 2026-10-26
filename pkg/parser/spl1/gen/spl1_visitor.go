@@ -223,6 +223,9 @@ type SPL1Visitor interface {
 	// Visit a parse tree produced by SPL1Parser#comparisonOp.
 	VisitComparisonOp(ctx *ComparisonOpContext) interface{}
 
+	// Visit a parse tree produced by SPL1Parser#operandStar.
+	VisitOperandStar(ctx *OperandStarContext) interface{}
+
 	// Visit a parse tree produced by SPL1Parser#star.
 	VisitStar(ctx *StarContext) interface{}
 
