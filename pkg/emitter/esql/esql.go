@@ -58,6 +58,14 @@ type emitter struct {
 	derived    map[string]bool       // columns created by bin/eval/rename, keyed by SPL name
 	renamed    map[string]ast.Rename // SPL names renamed away by rename, keyed by source
 	fromSource string                // the source actually emitted in FROM
+
+	// tstats is set once a tstats stage has been emitted. Data-model field
+	// references keep their dataset prefix for the rest of the pipeline, so
+	// every later stage resolves them the same way tstats did.
+	tstats         bool
+	tstatsFirst    *ast.TstatsStage // the stage-0 tstats stage, if any
+	tstatsWhere    ast.Expr         // its WHERE clause with index filters removed
+	tstatsStripPos ast.Pos          // first data-model field whose prefix was dropped
 }
 
 func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
@@ -69,16 +77,25 @@ func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
 		firstCleaned ast.Expr
 		indexValues  []string
 	)
-	if s, ok := p.Stages[0].(*ast.SearchStage); ok {
-		var err error
+	var err error
+	switch s := p.Stages[0].(type) {
+	case *ast.SearchStage:
 		firstCleaned, indexValues, err = extractIndex(s.Expr)
-		if err != nil {
-			e.record(err)
-			return e.result(), err
-		}
+	case *ast.TstatsStage:
+		e.tstatsFirst = s
+		firstCleaned, indexValues, err = extractIndex(s.Where)
+		e.tstatsWhere = firstCleaned
+	}
+	if err != nil {
+		e.record(err)
+		return e.result(), err
 	}
 
-	e.fromSource = e.resolveIndex(indexValues)
+	if e.tstatsFirst != nil {
+		e.fromSource = e.tstatsIndex(e.tstatsFirst, indexValues)
+	} else {
+		e.fromSource = e.resolveIndex(indexValues)
+	}
 	e.lines = append(e.lines, "FROM "+e.fromSource)
 
 	for i, st := range p.Stages {
@@ -136,6 +153,14 @@ func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
 			if err := e.emitRename(s); err != nil {
 				return e.result(), err
 			}
+		case *ast.TstatsStage:
+			if i != 0 {
+				return e.result(), e.errorf(s.Pos, "tstats-position",
+					"tstats reads a data model and must be the first stage")
+			}
+			if err := e.emitTstats(s, e.tstatsWhere); err != nil {
+				return e.result(), err
+			}
 		default:
 			return e.result(), e.errorf(st.Position(), "unsupported-stage",
 				"stage %q has no ES|QL emitter", st.StageName())
@@ -164,10 +189,7 @@ func (e *emitter) resolveIndex(values []string) string {
 	}
 	switch len(values) {
 	case 0:
-		if e.cfg.DefaultIndex == "" {
-			return "*"
-		}
-		return e.cfg.DefaultIndex
+		return e.defaultIndex()
 	case 1:
 		return e.cfg.Index(values[0])
 	default:
@@ -177,6 +199,152 @@ func (e *emitter) resolveIndex(values []string) string {
 		}
 		return strings.Join(mapped, ", ")
 	}
+}
+
+func (e *emitter) defaultIndex() string {
+	if e.cfg.DefaultIndex == "" {
+		return "*"
+	}
+	return e.cfg.DefaultIndex
+}
+
+// tstatsIndex resolves the source of a data-model aggregation. A data model is
+// not an index, so the mapping has to name the index that holds its events; an
+// index filter in the WHERE clause still wins, and an unmapped data model falls
+// back to the default index with a warning.
+func (e *emitter) tstatsIndex(s *ast.TstatsStage, values []string) string {
+	if e.indexOverride != "" {
+		return e.indexOverride
+	}
+	if len(values) > 0 {
+		return e.resolveIndex(values)
+	}
+	if s.Datamodel != "" {
+		if index, ok := e.cfg.Datamodel(s.Datamodel); ok {
+			return index
+		}
+		e.warnf(s.DatamodelPos, "tstats-datamodel",
+			"data model %q is not in the mapping's datamodels; searching the default index %q",
+			s.Datamodel, e.defaultIndex())
+	}
+	return e.defaultIndex()
+}
+
+// tstatsAccelerationOptions are the tstats options that only describe Splunk's
+// summary-index acceleration. They do not change which rows or values the query
+// returns, so ES|QL ignores them and says so.
+var tstatsAccelerationOptions = map[string]bool{
+	"summariesonly":       true,
+	"allow_old_summaries": true,
+	"prestats":            true,
+}
+
+// emitTstats translates a data-model aggregation into a WHERE (when the data
+// model query narrows rows) and a STATS stage.
+func (e *emitter) emitTstats(s *ast.TstatsStage, where ast.Expr) error {
+	// Data-model field references carry their dataset as a prefix in this stage
+	// and in every stage after it, so the whole remaining pipeline resolves
+	// them the same way.
+	e.tstats = true
+
+	if err := e.tstatsOptions(s); err != nil {
+		return err
+	}
+
+	if err := e.emitSearch(&ast.SearchStage{
+		Expr:     where,
+		Earliest: s.Earliest,
+		Latest:   s.Latest,
+		Pos:      s.Pos,
+	}, where); err != nil {
+		return err
+	}
+
+	aggs, err := e.emitAggs(s.Aggs)
+	if err != nil {
+		return err
+	}
+	line := "| STATS " + strings.Join(aggs, ", ")
+	fields, err := e.tstatsGroups(s)
+	if err != nil {
+		return err
+	}
+	if len(fields) > 0 {
+		line += " BY " + strings.Join(fields, ", ")
+	}
+	e.lines = append(e.lines, line)
+
+	if e.tstatsStripPos != (ast.Pos{}) {
+		e.warnf(e.tstatsStripPos, "tstats-field-prefix",
+			"data-model field prefixes are dropped and only the attribute name is queried; verify the field mapping")
+	}
+	return nil
+}
+
+func (e *emitter) tstatsOptions(s *ast.TstatsStage) error {
+	acceleration := false
+	for _, opt := range s.Options {
+		switch {
+		case tstatsAccelerationOptions[opt.Name]:
+			acceleration = true
+		case opt.Name == "fillnull_value":
+			// Splunk fills null buckets with this value; COUNT already ignores
+			// nulls, so only the null default needs no extra work.
+			if !strings.EqualFold(opt.Value, "null") {
+				return e.errorf(opt.Pos, "tstats-fillnull",
+					"tstats fillnull_value=%q has no exact ES|QL translation; only fillnull_value=null is supported",
+					opt.Value)
+			}
+		default:
+			return e.errorf(opt.Pos, "tstats-unknown-option",
+				"tstats option %q is not supported; supported options are allow_old_summaries, fillnull_value, prestats, and summariesonly",
+				opt.Name)
+		}
+	}
+	if acceleration {
+		e.info(s.Pos, "tstats-option",
+			"tstats acceleration options describe Splunk's summary index and do not change the result; they are ignored")
+	}
+	return nil
+}
+
+// tstatsGroups renders the BY clause. A span applies to _time only, so it
+// becomes a BUCKET on the timestamp field; any other group field is a plain
+// field reference.
+func (e *emitter) tstatsGroups(s *ast.TstatsStage) ([]string, error) {
+	span := ""
+	if s.Span != "" {
+		var err error
+		span, err = esqlSpan(s.Span)
+		if err != nil {
+			return nil, e.errorf(s.SpanPos, "invalid-span", "%v", err)
+		}
+	}
+
+	out := make([]string, 0, len(s.By))
+	bucketed := false
+	for _, ex := range s.By {
+		f, ok := ex.(*ast.FieldRef)
+		if !ok {
+			return nil, e.errorf(ex.Position(), "invalid-group-by",
+				"group-by accepts field names only")
+		}
+		if strings.EqualFold(f.Name, "_time") {
+			if span == "" {
+				out = append(out, quoteIdent(e.cfg.Field("_time")))
+				continue
+			}
+			out = append(out, "BUCKET("+quoteIdent(e.cfg.Field("_time"))+", "+span+")")
+			bucketed = true
+			continue
+		}
+		out = append(out, e.fieldName(f.Name, f.Pos))
+	}
+	if s.Span != "" && !bucketed {
+		e.warnf(s.SpanPos, "tstats-span",
+			"span=%s applies to _time, which is not a group-by field; the span is ignored", s.Span)
+	}
+	return out, nil
 }
 
 func (e *emitter) emitSearch(s *ast.SearchStage, expr ast.Expr) error {
@@ -314,21 +482,21 @@ func (e *emitter) emitAggs(aggs []ast.Aggregate) ([]string, error) {
 				return nil, e.errorf(a.Pos, "invalid-aggregation", "%s requires a field argument", a.Func)
 			}
 			call = "COUNT_DISTINCT(" + e.expr(a.Arg, 0) + ")"
-		case "sum", "avg", "min", "max":
+		case "sum", "avg", "min", "max", "values", "earliest", "latest":
 			if a.Arg == nil {
 				return nil, e.errorf(a.Pos, "invalid-aggregation", "%s requires a field argument", a.Func)
 			}
 			call = strings.ToUpper(fn) + "(" + e.expr(a.Arg, 0) + ")"
 		default:
 			return nil, e.errorf(a.Pos, "unsupported-agg",
-				"aggregation %q has no verified ES|QL mapping; use count, dc, sum, avg, min, or max", a.Func)
+				"aggregation %q has no verified ES|QL mapping; use count, dc, sum, avg, min, max, values, earliest, or latest", a.Func)
 		}
-		out = append(out, quoteIdent(aggregateAlias(a))+" = "+call)
+		out = append(out, quoteIdent(e.aggregateAlias(a))+" = "+call)
 	}
 	return out, nil
 }
 
-func aggregateAlias(a ast.Aggregate) string {
+func (e *emitter) aggregateAlias(a ast.Aggregate) string {
 	if a.Alias != "" {
 		return a.Alias
 	}
@@ -337,7 +505,7 @@ func aggregateAlias(a ast.Aggregate) string {
 		return "count"
 	}
 	if f, ok := a.Arg.(*ast.FieldRef); ok {
-		return sanitizeAlias(fn + "_" + f.Name)
+		return sanitizeAlias(fn + "_" + e.tstatsName(f.Name, f.Pos))
 	}
 	return fn
 }
@@ -583,7 +751,26 @@ func (e *emitter) fieldName(name string, pos ast.Pos) string {
 	if e.derived[name] {
 		return quoteIdent(name)
 	}
-	return quoteIdent(e.cfg.Field(name))
+	return quoteIdent(e.cfg.Field(e.tstatsName(name, pos)))
+}
+
+// tstatsName drops a data-model node prefix from a field reference. tstats
+// writes `Dataset.attribute`, where the prefix names a node in the data model
+// rather than a column in the index, so the attribute is the target field. The
+// mapping still has the final say, so the prefix removal composes with a field
+// dictionary entry.
+func (e *emitter) tstatsName(name string, pos ast.Pos) string {
+	if !e.tstats {
+		return name
+	}
+	i := strings.LastIndexByte(name, '.')
+	if i < 0 || i+1 == len(name) {
+		return name
+	}
+	if e.tstatsStripPos == (ast.Pos{}) && pos != (ast.Pos{}) {
+		e.tstatsStripPos = pos
+	}
+	return name[i+1:]
 }
 
 // --- expressions ---------------------------------------------------------
