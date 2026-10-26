@@ -177,6 +177,27 @@ func loadCorpus(t *testing.T, dir string) (corpusMeta, []corpusQuery) {
 		t.Fatalf("%s: metadata says %d queries, file has %d",
 			dir, meta.Queries, len(queries))
 	}
+	// queries_per_version is the recorded coverage per source version, so it
+	// has to be the count of lines that carry that version, not just a number
+	// in range.
+	tally := make(map[string]int)
+	for _, q := range queries {
+		for _, v := range q.Versions {
+			tally[v]++
+		}
+	}
+	for version, count := range meta.PerVersion {
+		if tally[version] != count {
+			t.Errorf("%s: queries_per_version[%q] = %d, lines count %d",
+				dir, version, count, tally[version])
+		}
+	}
+	for version := range tally {
+		if _, ok := meta.PerVersion[version]; !ok {
+			t.Errorf("%s: lines carry version %q that queries_per_version "+
+				"does not count", dir, version)
+		}
+	}
 	return meta, queries
 }
 
@@ -235,11 +256,37 @@ func checkMetaKind(t *testing.T, dir string, meta corpusMeta) {
 		if meta.License == "" {
 			t.Errorf("%s: derived collection does not name a licence", dir)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "LICENSE")); err != nil {
-			t.Errorf("%s: derived collection has no LICENSE: %v", dir, err)
-		}
+		checkLicenceText(t, dir, meta.License)
 	default:
 		t.Errorf("%s: kind %q is not documented or derived", dir, meta.Kind)
+	}
+}
+
+// licenceMarkers is the text a licence file must contain for each identifier a
+// collection may declare. A file's presence is not enough: a truncated or
+// wrong licence under the right name would otherwise pass.
+var licenceMarkers = map[string][]string{
+	"Apache-2.0": {"Apache License", "Version 2.0"},
+}
+
+func checkLicenceText(t *testing.T, dir, licence string) {
+	t.Helper()
+	markers, ok := licenceMarkers[licence]
+	if !ok {
+		t.Errorf("%s: no marker for licence %q; add one to licenceMarkers",
+			dir, licence)
+		return
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "LICENSE"))
+	if err != nil {
+		t.Errorf("%s: read LICENSE: %v", dir, err)
+		return
+	}
+	for _, marker := range markers {
+		if !strings.Contains(string(raw), marker) {
+			t.Errorf("%s: LICENSE for %s does not contain %q",
+				dir, licence, marker)
+		}
 	}
 }
 

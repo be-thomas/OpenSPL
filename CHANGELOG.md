@@ -22,11 +22,11 @@ All notable changes to this project are documented here. The format follows
   SPL.
 - Fuzz targets `FuzzParseSPL1` and `FuzzParseSPL2`, and a lexer-parity test
   that tokenizes one corpus with both generated lexers.
-- A query corpus under `conformance/corpus/` with 2,786 queries in three
+- A query corpus under `conformance/corpus/` with 2,812 queries in three
   collections. `spl1` and `spl2` hold the example queries from the SPL and SPL2
   search references, gathered across Splunk Enterprise documentation versions
   (9.0 through 10.0) and from the current SPL2 reference;
-  `spl1-detections` holds 2,145 searches from the pinned Splunk
+  `spl1-detections` holds 2,171 searches from the pinned Splunk
   `security_content` detections with the repository's own macros expanded, and
   is recorded as a derived collection with its transformation and its
   Apache-2.0 licence. Every `metadata.json` records the dialect, the kind, and

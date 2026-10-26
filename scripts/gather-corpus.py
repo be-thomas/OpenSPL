@@ -273,21 +273,63 @@ def gather_group(base, group, cache_dir, pool, dialect):
     return out, failed
 
 
+def quoted_end(value):
+    """Index of the quote closing the quoted scalar at value[0], or None.
+
+    A single-quoted scalar ends at a `'` that is not part of a doubled `''`;
+    a double-quoted one at a `"` that is not backslash-escaped. YAML lets
+    either run over several lines, which `yaml_block` folds before decoding.
+    """
+    quote = value[0]
+    i, n = 1, len(value)
+    while i < n:
+        ch = value[i]
+        if quote == "'":
+            if ch == "'":
+                if i + 1 < n and value[i + 1] == "'":
+                    i += 2
+                    continue
+                return i
+        elif ch == "\\":
+            i += 2
+            continue
+        elif ch == '"':
+            return i
+        i += 1
+    return None
+
+
 def yaml_scalar(value):
     """One YAML scalar as written: quoted, or plain up to a comment."""
     value = value.strip()
-    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
-        return value[1:-1].replace("''", "'")
-    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-        return re.sub(r"\\(.)", lambda m: {"n": "\n", "t": "\t"}.get(
-            m.group(1), m.group(1)), value[1:-1])
+    if value[:1] in ("'", '"'):
+        end = quoted_end(value)
+        if end is not None:
+            if value[0] == "'":
+                return value[1:end].replace("''", "'")
+            return re.sub(r"\\(.)", lambda m: {"n": "\n", "t": "\t"}.get(
+                m.group(1), m.group(1)), value[1:end])
     if " #" in value:
         value = value.split(" #", 1)[0]
     return value
 
 
 def yaml_block(lines, index, value):
-    """The value of `key: <value>` at lines[index], and the next line index."""
+    """The value of `key: <value>` at lines[index], and the next line index.
+
+    A quoted scalar continued over following lines is folded into one line,
+    as YAML does, before it is decoded. The value is None when the quote never
+    closes, which the caller reports against the file it came from.
+    """
+    if value[:1] in ("'", '"'):
+        parts = [value]
+        i = index + 1
+        while quoted_end(" ".join(parts)) is None:
+            if i >= len(lines):
+                return None, i
+            parts.append(lines[i].strip())
+            i += 1
+        return yaml_scalar(" ".join(parts)), i
     if value not in ("|", "|-", "|+", ">", ">-", ">+"):
         return yaml_scalar(value), index
     body = []
@@ -317,7 +359,8 @@ def macro_definitions(root):
         for name in sorted(names):
             if not name.endswith(".yml"):
                 continue
-            lines = open(os.path.join(dirpath, name), encoding="utf-8",
+            path = os.path.join(dirpath, name)
+            lines = open(path, encoding="utf-8",
                          errors="replace").read().split("\n")
             name_value = definition = None
             arguments = []
@@ -334,6 +377,9 @@ def macro_definitions(root):
                     if line.startswith(field + ":"):
                         value, _ = yaml_block(
                             lines, i, line[len(field) + 1:].strip())
+                        if value is None:
+                            sys.exit("%s: the %s value's quote never closes"
+                                     % (path, field))
                         if field == "name":
                             name_value = value.strip()
                         else:
@@ -350,7 +396,15 @@ def detection_search(path):
     for i, line in enumerate(lines):
         if line.startswith("search:"):
             value, _ = yaml_block(lines, i, line[len("search:"):].strip())
-            return " ".join(value.split())
+            if value is None:
+                sys.exit("%s: the search value's quote never closes" % path)
+            value = " ".join(value.split())
+            if value[:1] in ("'", '"'):
+                # A leading quote here means the scalar was misread: every
+                # quoted value keeps its quotes only until yaml_block decodes
+                # it, so storing this would put YAML punctuation in a query.
+                sys.exit("%s: could not decode the search value" % path)
+            return value
     return ""
 
 
@@ -455,12 +509,14 @@ def truncate_at_unresolved_macro(query):
     A detection ends with a filter macro the security_content repository does
     not ship an expansion for. Cutting there keeps the part of the pipeline the
     parser can be held to, instead of recording the same refusal at a backtick
-    for every detection.
+    for every detection. Only a macro call stops the cut: some searches quote
+    code fences and prose inside their own `search` value, and those backticks
+    are part of the detection, not an unexpanded macro.
     """
     stages = [s.strip() for s in pipeline_stages(query)]
     keep = []
     for stage in stages:
-        if "`" in stage:
+        if MACRO_CALL.search(stage):
             break
         if stage:
             keep.append(stage)
@@ -469,6 +525,12 @@ def truncate_at_unresolved_macro(query):
 
 def security_content_tree(cache_dir):
     """Extract the pinned security_content tarball; return root and temp dir."""
+    if not hasattr(tarfile, "data_filter"):
+        # A downloaded archive must be extracted through the data filter,
+        # which refuses absolute paths, links outside the tree, and device
+        # files. Without it the fallback would be an unfiltered extractall.
+        sys.exit("Python 3.12 or later is needed for a filtered "
+                 "security_content extraction (tarfile.data_filter)")
     url = "https://codeload.github.com/splunk/security_content/tar.gz/%s" % (
         SECURITY_CONTENT_REF)
     body = fetch_bytes(url, cache_dir)
@@ -476,14 +538,17 @@ def security_content_tree(cache_dir):
         sys.exit("could not download %s" % url)
     tmp = tempfile.mkdtemp(prefix="openspl-security-content-")
     archive = os.path.join(tmp, "source.tar.gz")
-    with open(archive, "wb") as f:
-        f.write(body)
-    with tarfile.open(archive) as tar:
-        if hasattr(tarfile, "data_filter"):
+    try:
+        with open(archive, "wb") as f:
+            f.write(body)
+        with tarfile.open(archive) as tar:
             tar.extractall(tmp, filter="data")
-        else:
-            tar.extractall(tmp)
-    os.remove(archive)
+        os.remove(archive)
+    except (tarfile.TarError, OSError) as err:
+        # Leave no half-extracted tree behind: a later run would otherwise
+        # find it and read a truncated repository.
+        shutil.rmtree(tmp, ignore_errors=True)
+        sys.exit("could not extract %s: %s" % (url, err))
     roots = [os.path.join(tmp, n) for n in os.listdir(tmp)]
     return roots[0], tmp
 
@@ -501,8 +566,10 @@ def gather_security_content(root):
             query = detection_search(path)
             if not query:
                 continue
-            query = truncate_at_unresolved_macro(
-                expand_macros(" ".join(query.split()), macros))
+            # Normalize after expansion, not before: a macro definition can
+            # decode YAML `\n` escapes into whitespace of its own.
+            expanded = " ".join(expand_macros(query, macros).split())
+            query = truncate_at_unresolved_macro(expanded)
             if query:
                 out.setdefault(rel, []).append(query)
     return out
