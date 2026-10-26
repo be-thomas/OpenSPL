@@ -155,6 +155,11 @@ one of two kinds:
   stage in the collections of its dialect. A command with no corpus query is a
   command nothing tests.
 
+`make corpus-report` measures what the corpus achieves rather than what it
+asserts: how many queries parse to the IR, and how many of those emit to ES|QL
+and to PromQL. The current table is in the README's "Conformance report"
+section.
+
 The dialect, the kind, and the source versions live in each collection's
 `metadata.json`, and each query lists the versions that contain it. Nothing is
 inferred from the query text: `from` is the only textual hint, and classic SPL

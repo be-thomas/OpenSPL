@@ -20,6 +20,9 @@ All notable changes to this project are documented here. The format follows
 - Conformance cases under `cases/spl2/` and an `options.spl_version` metadata
   key; unknown versions fail the case instead of silently running as classic
   SPL.
+- `make corpus-report` measures the corpus end to end: how many queries parse
+  to the IR, and how many of those compile to ES\|QL and to PromQL. The table
+  is published in the README's "Conformance report" section.
 - Fuzz targets `FuzzParseSPL1` and `FuzzParseSPL2`, and a lexer-parity test
   that tokenizes one corpus with both generated lexers.
 - A query corpus under `conformance/corpus/` with 2,812 queries in three
