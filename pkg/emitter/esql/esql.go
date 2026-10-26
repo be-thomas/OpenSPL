@@ -59,10 +59,12 @@ type emitter struct {
 	renamed    map[string]ast.Rename // SPL names renamed away by rename, keyed by source
 	fromSource string                // the source actually emitted in FROM
 
-	// tstats is set once a tstats stage has been emitted. Data-model field
-	// references keep their dataset prefix for the rest of the pipeline, so
-	// every later stage resolves them the same way tstats did.
-	tstats         bool
+	// A tstats stage names its fields as Dataset.attribute. The dataset part is
+	// a data-model node, not a column, so it is dropped before the field
+	// dictionary runs. tstatsPrefixes holds the node names that may appear as
+	// that prefix; every other dotted name is left alone, because ECS names
+	// such as source.address are columns, not data-model references.
+	tstatsPrefixes []string
 	tstatsFirst    *ast.TstatsStage // the stage-0 tstats stage, if any
 	tstatsWhere    ast.Expr         // its WHERE clause with index filters removed
 	tstatsStripPos ast.Pos          // first data-model field whose prefix was dropped
@@ -83,6 +85,7 @@ func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
 		firstCleaned, indexValues, err = extractIndex(s.Expr)
 	case *ast.TstatsStage:
 		e.tstatsFirst = s
+		e.tstatsPrefixes = dataModelPrefixes(s.Datamodel)
 		firstCleaned, indexValues, err = extractIndex(s.Where)
 		e.tstatsWhere = firstCleaned
 	}
@@ -167,6 +170,13 @@ func (e *emitter) emit(p *ast.Pipeline) (*Result, error) {
 		}
 	}
 
+	// A tstats field may be stripped in any stage after it, so the warning is
+	// emitted once the whole pipeline has been walked.
+	if e.tstatsStripPos != (ast.Pos{}) {
+		e.warnf(e.tstatsStripPos, "tstats-field-prefix",
+			"data-model field prefixes are dropped and only the attribute name is queried; verify the field mapping")
+	}
+
 	diag.Sort(e.diags)
 	if diag.HasErrors(e.diags) {
 		return e.result(), &diag.Error{Diagnostics: e.diags}
@@ -242,11 +252,6 @@ var tstatsAccelerationOptions = map[string]bool{
 // emitTstats translates a data-model aggregation into a WHERE (when the data
 // model query narrows rows) and a STATS stage.
 func (e *emitter) emitTstats(s *ast.TstatsStage, where ast.Expr) error {
-	// Data-model field references carry their dataset as a prefix in this stage
-	// and in every stage after it, so the whole remaining pipeline resolves
-	// them the same way.
-	e.tstats = true
-
 	if err := e.tstatsOptions(s); err != nil {
 		return err
 	}
@@ -273,11 +278,6 @@ func (e *emitter) emitTstats(s *ast.TstatsStage, where ast.Expr) error {
 		line += " BY " + strings.Join(fields, ", ")
 	}
 	e.lines = append(e.lines, line)
-
-	if e.tstatsStripPos != (ast.Pos{}) {
-		e.warnf(e.tstatsStripPos, "tstats-field-prefix",
-			"data-model field prefixes are dropped and only the attribute name is queried; verify the field mapping")
-	}
 	return nil
 }
 
@@ -754,23 +754,38 @@ func (e *emitter) fieldName(name string, pos ast.Pos) string {
 	return quoteIdent(e.cfg.Field(e.tstatsName(name, pos)))
 }
 
-// tstatsName drops a data-model node prefix from a field reference. tstats
-// writes `Dataset.attribute`, where the prefix names a node in the data model
-// rather than a column in the index, so the attribute is the target field. The
-// mapping still has the final say, so the prefix removal composes with a field
-// dictionary entry.
+// dataModelPrefixes returns the names a data-model field reference may carry
+// before its attribute. Splunk writes `<node>.<attribute>`, where the node is
+// the data model's root dataset or the model name itself, so those are the
+// only prefixes that are dropped. Anything else with a dot — `source.address`,
+// `host.name` — is a column name and is left alone. Longest first, so
+// `Endpoint.Processes.dest` matches the model before its root dataset.
+func dataModelPrefixes(datamodel string) []string {
+	if datamodel == "" {
+		return nil
+	}
+	prefixes := []string{datamodel}
+	if i := strings.LastIndexByte(datamodel, '.'); i >= 0 && i+1 < len(datamodel) {
+		prefixes = append(prefixes, datamodel[i+1:])
+	}
+	return prefixes
+}
+
+// tstatsName drops a data-model node prefix from a field reference. The prefix
+// names a node in the data model rather than a column in the index, so only the
+// attribute remains. The mapping still has the final say, so prefix removal
+// composes with a field dictionary entry.
 func (e *emitter) tstatsName(name string, pos ast.Pos) string {
-	if !e.tstats {
-		return name
+	for _, prefix := range e.tstatsPrefixes {
+		if len(name) <= len(prefix)+1 || !strings.HasPrefix(name, prefix) || name[len(prefix)] != '.' {
+			continue
+		}
+		if e.tstatsStripPos == (ast.Pos{}) && pos != (ast.Pos{}) {
+			e.tstatsStripPos = pos
+		}
+		return name[len(prefix)+1:]
 	}
-	i := strings.LastIndexByte(name, '.')
-	if i < 0 || i+1 == len(name) {
-		return name
-	}
-	if e.tstatsStripPos == (ast.Pos{}) && pos != (ast.Pos{}) {
-		e.tstatsStripPos = pos
-	}
-	return name[i+1:]
+	return name
 }
 
 // --- expressions ---------------------------------------------------------
